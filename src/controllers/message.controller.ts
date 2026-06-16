@@ -1,0 +1,54 @@
+// /src/controllers/message.controller.ts
+
+import type { Request, Response, NextFunction } from 'express'
+import { catchAsync } from '../config/errorHandler.js'
+import { AppError } from '../services/appError.js'
+import Message from '../models/Message.js'
+import ChatSession from '../models/ChatSession.js'
+import Operator from '../models/Operator.js' 
+
+export const getSessionMessages = catchAsync(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const { sessionId } = req.params
+
+    if (!sessionId) {
+      return next(
+        new AppError('Session instance identifier parameter is required.', 400),
+      )
+    }
+
+    const sessionExists = await ChatSession.exists({ _id: sessionId })
+    if (!sessionExists) {
+      return next(
+        new AppError('The requested conversation thread does not exist.', 404),
+      )
+    }
+
+    // 1. Fetch raw messages
+    const messages = await Message.find({ sessionId })
+      .sort({ createdAt: 1 })
+      .lean()
+
+    // 2. Hydrate messages with current operator names
+    const hydratedMessages = await Promise.all(
+      messages.map(async (msg) => {
+        if (msg.senderType === 'operator') {
+          const operator = await Operator.findById(msg.senderId)
+          return {
+            ...msg,
+            senderName: operator
+              ? `${operator.firstName} ${operator.lastName}`.trim()
+              : msg.senderName || 'Support', 
+          }
+        }
+        return msg
+      }),
+    )
+
+    res.status(200).json({
+      status: 'success',
+      results: hydratedMessages.length,
+      data: { messages: hydratedMessages },
+    })
+  },
+)

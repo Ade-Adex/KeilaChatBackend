@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    // File Layout
+    "rootDir": "./src", // Tell TS to look inside src/
+    "outDir": "./dist", // Compiled code goes here
+
+    // Environment Settings
+    "module": "nodenext",
+    "target": "esnext",
+    "types": ["node"], // Added node types explicitly
+
+    // Other Outputs
+    "sourceMap": true,
+    "declaration": true,
+    "declarationMap": true,
+
+    // Stricter Typechecking Options
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+
+    // Recommended Options
+    "strict": true,
+    "jsx": "react-jsx",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true
+  }
+}
