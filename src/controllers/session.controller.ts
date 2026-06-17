@@ -6,6 +6,7 @@ import { AppError } from '../services/appError.js'
 import ChatSession from '../models/ChatSession.js'
 import Property from '../models/Property.js'
 import Visitor from '../models/Visitor.js'
+import mongoose from 'mongoose'
 
 /**
  * @route   POST /api/v1/sessions/initiate
@@ -14,17 +15,19 @@ import Visitor from '../models/Visitor.js'
  */
 export const initiateSession = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { propertyId, visitorId } = req.body
+    const { widgetId, visitorId } = req.body // Use widgetId from request
 
-    if (!propertyId || !visitorId) {
-      return next(new AppError('Property ID and Visitor ID are required.', 400))
+    if (!widgetId || !visitorId) {
+      return next(new AppError('Required identifiers missing.', 400))
     }
 
-    // 1. Verify the Property exists
-    const property = await Property.findById(propertyId)
+    // Lookup property by widgetId (UUID)
+    const property = await Property.findOne({ widgetId })
     if (!property) {
-      return next(new AppError('Invalid property context.', 404))
+      return next(new AppError('Invalid widget configuration.', 404))
     }
+
+    const propertyId = property._id
 
     // 2. Find or Create the Visitor
     // We use findOneAndUpdate with upsert: true to handle new visitors automatically

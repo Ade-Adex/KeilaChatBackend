@@ -12,7 +12,7 @@ export interface IAttachment {
 export interface IMessage extends Document {
   sessionId: Types.ObjectId
   senderType: 'visitor' | 'operator' | 'system'
-  senderId: Types.ObjectId
+  senderId: string
   senderName?: string
   messageText: string
   attachments: IAttachment[]
@@ -35,7 +35,7 @@ const MessageSchema = new Schema<IMessage>(
       required: true,
     },
     senderId: {
-      type: Schema.Types.ObjectId,
+      type: String,
       required: true,
     },
     senderName: {

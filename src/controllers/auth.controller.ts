@@ -93,12 +93,10 @@ export const loginOperator = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { email, password } = req.body
 
-    // 1. Sanity Check Input Layout
     if (!email || !password) {
       return next(new AppError('Please provide both email and password.', 400))
     }
 
-    // 2. Locate Account Profile by Email
     const account = await Account.findOne({ ownerEmail: email })
     if (!account || !account.isActive) {
       return next(
@@ -106,7 +104,6 @@ export const loginOperator = catchAsync(
       )
     }
 
-    // 3. Authenticate Cryptographic Password Match
     const isPasswordCorrect = await bcrypt.compare(
       password,
       account.passwordHash,
@@ -115,16 +112,15 @@ export const loginOperator = catchAsync(
       return next(new AppError('Invalid password credentials.', 401))
     }
 
-    // 4. Issue Cryptographic JSON Web Token Session
-    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-key'
+    // --- NEW: Fetch the associated property for this account ---
+    const property = await Property.findOne({ accountId: account._id })
 
-    // Explicitly casting the sign options satisfies the rigid 'StringValue' constraint
+    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-key'
     const signOptions: SignOptions = {
       expiresIn:
         (process.env.JWT_EXPIRES_IN as SignOptions['expiresIn']) || '7d',
     }
 
-    // Ensure accountId is cast to a string payload cleanly
     const token = jwt.sign(
       {
         accountId: account._id.toString(),
@@ -135,7 +131,6 @@ export const loginOperator = catchAsync(
       signOptions,
     )
 
-    // 5. Respond with Clean Payload Envelope
     res.status(200).json({
       status: 'success',
       message: 'Authentication successful.',
@@ -147,6 +142,13 @@ export const loginOperator = catchAsync(
           ownerEmail: account.ownerEmail,
           plan: account.plan,
         },
+        property: property
+          ? {
+              id: property._id,
+              widgetId: property.widgetId,
+              name: property.name,
+            }
+          : null,
       },
     })
   },
