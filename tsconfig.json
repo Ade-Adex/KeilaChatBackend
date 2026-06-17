@@ -1,37 +1,38 @@
 {
   "compilerOptions": {
-    // File Layout
-    "rootDir": "./src", // Tell TS to look inside src/
-    "outDir": "./dist", // Compiled code goes here
-
-    // Environment Settings
-    "module": "nodenext",
+    /* Base Settings */
+    "rootDir": "./src",
+    "outDir": "./dist",
     "target": "esnext",
-    "types": ["node"],
-    "typeRoots": ["./node_modules/@types"],
 
-    "moduleResolution": "node",
+    /* Module Resolution (Corrected for Nodenext) */
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
 
-    // Other Outputs
+    /* Type Definitions */
+    "types": ["node"],
+    "typeRoots": ["./node_modules/@types"],
+
+    /* Strictness & Safety */
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedSideEffectImports": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+
+    /* Outputs */
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
 
-    // Stricter Typechecking Options
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-
-    // Recommended Options
-    "strict": true,
-    "jsx": "react-jsx",
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "noUncheckedSideEffectImports": true,
-    "moduleDetection": "force",
-    "skipLibCheck": true
+    /* Compatibility */
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
