@@ -30,7 +30,6 @@ export const initiateSession = catchAsync(
     const propertyId = property._id
 
     // 2. Find or Create the Visitor
-    // We use findOneAndUpdate with upsert: true to handle new visitors automatically
     let visitor = await Visitor.findOneAndUpdate(
       { visitorTrackingId: visitorId, propertyId },
       {
