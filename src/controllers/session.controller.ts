@@ -101,3 +101,26 @@ export const getPropertySessions = catchAsync(
     })
   },
 )
+
+
+
+
+
+
+export const endSession = catchAsync(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const { sessionId } = req.params
+
+    const session = await ChatSession.findByIdAndUpdate(
+      sessionId,
+      { status: 'closed' },
+      { new: true },
+    )
+
+    if (!session) {
+      return next(new AppError('Session not found.', 404))
+    }
+
+    res.status(200).json({ status: 'success', message: 'Session closed' })
+  },
+)
