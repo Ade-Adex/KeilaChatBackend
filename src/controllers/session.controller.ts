@@ -7,6 +7,8 @@ import ChatSession from '../models/ChatSession.js'
 import Property from '../models/Property.js'
 import Visitor from '../models/Visitor.js'
 import mongoose from 'mongoose'
+import Message from '../models/Message.js'
+import { Types } from 'mongoose'
 
 /**
  * @route   POST /api/v1/sessions/initiate
@@ -102,24 +104,47 @@ export const getPropertySessions = catchAsync(
   },
 )
 
-
-
-
-
-
 export const endSession = catchAsync(
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { sessionId } = req.params
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Force sessionId to be a string
+    const rawSessionId = req.params.sessionId
+    const sessionId = Array.isArray(rawSessionId)
+      ? rawSessionId[0]
+      : rawSessionId
 
-    const session = await ChatSession.findByIdAndUpdate(
-      sessionId,
-      { status: 'closed' },
-      { new: true },
-    )
+    const { endedBy } = req.body
 
-    if (!session) {
-      return next(new AppError('Session not found.', 404))
+    if (!sessionId) {
+      return next(new AppError('Session ID is required', 400))
     }
+
+    // Now sessionId is guaranteed to be a string
+    const session = await ChatSession.findById(sessionId)
+    if (!session) return next(new AppError('Session not found', 404))
+
+    session.status = 'closed'
+    session.endedAt = new Date()
+    await session.save()
+
+    const messageText =
+      endedBy === 'admin'
+        ? 'This chat session has been closed by the support team.'
+        : 'This chat session has been closed by the visitor.'
+
+    const systemMessage = await Message.create({
+      // sessionId is now safely a string
+      sessionId: new Types.ObjectId(sessionId),
+      senderType: 'system',
+      senderId: 'system',
+      messageText,
+      createdAt: new Date(),
+    })
+
+    const io = req.app.get('socketService').getIO()
+    const roomName = `session:${sessionId}`
+
+    io.to(roomName).emit('new_message', systemMessage)
+    io.to(roomName).emit('session_closed', { sessionId, endedBy })
 
     res.status(200).json({ status: 'success', message: 'Session closed' })
   },

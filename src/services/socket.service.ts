@@ -71,6 +71,15 @@ export class SocketService {
           messageText: string
         }) => {
           try {
+            const session = await ChatSession.findById(data.sessionId)
+
+            if (!session || session.status === 'closed') {
+              socket.emit('error', {
+                message: 'This session is closed. No further messages allowed.',
+              })
+              return 
+            }
+
             const nameToSave =
               data.senderName ||
               (data.senderType === 'operator' ? 'Support' : 'Visitor')
