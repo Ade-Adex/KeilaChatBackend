@@ -11,8 +11,18 @@ export const initializeWidget = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     // 1. Extract context from body AND headers
     const { widgetId, visitorTrackingId } = req.body
-    const origin = req.headers.origin || req.headers.referer // Helps detect where it's embedded
+    
+const origin = req.headers.origin || req.headers.referer;
 
+// Extract domain from origin (e.g., "https://example.com" -> "example.com")
+const domainFromOrigin = origin ? new URL(origin).hostname : null;
+
+// HARD BLOCK: If origin exists and doesn't match the registered domain
+if (domainFromOrigin && !property.domain.includes(domainFromOrigin)) {
+  return next(new AppError('Unauthorized domain.', 403));
+}
+
+    
     if (!widgetId) {
       return next(new AppError('Widget Configuration ID is required.', 400))
     }
@@ -21,13 +31,6 @@ export const initializeWidget = catchAsync(
     const property = await Property.findOne({ widgetId }).lean()
     if (!property) {
       return next(new AppError('Invalid widget configuration.', 404))
-    }
-
-    // 3. Professional Security/Audit Logging
-    // We don't block the widget if the domain doesn't match (for ease of use), 
-    // but we log it for future analytics/security alerts.
-    if (origin && !origin.includes(property.domain)) {
-      console.warn(`[SECURITY] Widget ${widgetId} loaded on unauthorized domain: ${origin}`)
     }
 
     // 4. System Status Check
