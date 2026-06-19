@@ -15,22 +15,28 @@ import { SocketService } from './services/socket.service.js'
 const app = express()
 const server = http.createServer(app)
 
-// Connect Databases
 connectDB()
 
 // Global Middlewares
-app.use(
-  cors({
-    origin: [
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      'https://keila-chat.vercel.app',
-    ],
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  }),
-)
+// Replace your existing cors config with this:
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || ['https://keila-chat.vercel.app', 'http://localhost:3000'].includes(origin)) {
+      callback(null, true)
+    } else {
+      callback(null, true)
+    }
+  },
+methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+}))
+
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Security-Policy', "frame-ancestors *");
+  next();
+});
 
 app.use(express.json())
 
