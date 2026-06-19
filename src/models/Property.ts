@@ -1,21 +1,26 @@
 // /src/models/Property.ts
-
 import { Schema, model } from 'mongoose'
 import type { Document, Types } from 'mongoose'
-import { v4 as uuidv4 } from 'uuid'
 
 export interface IProperty extends Document {
   accountId: Types.ObjectId
   name: string
   domain: string
   widgetId: string
+  apiKey: string
+  details: {
+    category: string
+    subCategory: string
+    region: string
+    description: string
+    propertyImageUrl: string
+  }
   settings: {
     themeColor: string
     headingText: string
     onlineStatus: boolean
+    trackIp: boolean
   }
-  createdAt: Date
-  updatedAt: Date
 }
 
 const PropertySchema = new Schema<IProperty>(
@@ -26,26 +31,22 @@ const PropertySchema = new Schema<IProperty>(
       required: true,
       index: true,
     },
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    domain: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    widgetId: {
-      type: String,
-      required: true,
-      unique: true,
-      default: () => crypto.randomUUID(),
+    name: { type: String, required: true, trim: true },
+    domain: { type: String, required: true, trim: true },
+    widgetId: { type: String, required: true, unique: true },
+    apiKey: { type: String, required: true, unique: true },
+    details: {
+      category: { type: String, default: 'General' },
+      subCategory: { type: String, default: '' },
+      region: { type: String, default: 'Global' },
+      description: { type: String, default: '' },
+      propertyImageUrl: { type: String, default: '' },
     },
     settings: {
       themeColor: { type: String, default: '#0070f3' },
       headingText: { type: String, default: 'Chat with us!' },
       onlineStatus: { type: Boolean, default: true },
+      trackIp: { type: Boolean, default: true },
     },
   },
   { timestamps: true },

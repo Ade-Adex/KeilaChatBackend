@@ -1,17 +1,16 @@
 // /src/controllers/auth.controller.ts
-
 import type { Request, Response, NextFunction } from 'express'
-import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
-import type { SignOptions } from 'jsonwebtoken'
 import { catchAsync } from '../config/errorHandler.js'
 import { AppError } from '../services/appError.js'
 import Account from '../models/Account.js'
 import Property from '../models/Property.js'
+import * as AuthUtils from '../utils/auth.utils.js'
+import { sendWelcomeEmail } from '../lib/email.js'
+import bcrypt from 'bcryptjs'
 
 /**
  * @route   POST /api/v1/auth/register
- * @desc    Onboard a new tenant account alongside their initial tracking property
+ * @desc    Onboard a new tenant account and their initial property
  * @access  Public
  */
 export const registerTenant = catchAsync(
@@ -19,7 +18,7 @@ export const registerTenant = catchAsync(
     const { companyName, ownerEmail, password, propertyName, propertyDomain } =
       req.body
 
-    // 1. Inputs Validation Check
+    // 1. Validation
     if (
       !companyName ||
       !ownerEmail ||
@@ -32,7 +31,7 @@ export const registerTenant = catchAsync(
       )
     }
 
-    // 2. Prevent Duplicate Account Enlistments
+    // 2. Duplicate Check
     const existingAccount = await Account.findOne({ ownerEmail })
     if (existingAccount) {
       return next(
@@ -40,11 +39,8 @@ export const registerTenant = catchAsync(
       )
     }
 
-    // 3. Cryptographic Password Hashing Securely
-    const salt = await bcrypt.genSalt(12)
-    const passwordHash = await bcrypt.hash(password, salt)
-
-    // 4. Atomic Multi-Tenant Provisioning Execution
+    // 3. Account Provisioning
+    const passwordHash = await AuthUtils.hashPassword(password)
     const newAccount = await Account.create({
       name: companyName,
       ownerEmail,
@@ -52,32 +48,43 @@ export const registerTenant = catchAsync(
       plan: 'free',
     })
 
+    // 4. Property Provisioning
+    const { widgetId, apiKey } = AuthUtils.generatePropertyCredentials()
     const newProperty = await Property.create({
       accountId: newAccount._id,
       name: propertyName,
       domain: propertyDomain,
+      widgetId,
+      apiKey,
+      details: {
+        category: 'General',
+        subCategory: '',
+        region: 'Global',
+        description: '',
+        propertyImageUrl: '',
+      },
       settings: {
         themeColor: '#0070f3',
         headingText: 'Chat with us!',
         onlineStatus: true,
+        trackIp: true,
       },
     })
 
-    // 5. Structure Industrial Standard Output Envelope
+    // 5. Post-Registration: Welcome Email (Fire and forget)
+    sendWelcomeEmail(ownerEmail, companyName).catch((err) =>
+      console.error('Registration email failed:', err),
+    )
+
+    // 6. Response
     res.status(201).json({
       status: 'success',
-      message: 'Onboarding initialization complete. Property widget ready.',
       data: {
-        account: {
-          id: newAccount._id,
-          name: newAccount.name,
-          ownerEmail: newAccount.ownerEmail,
-        },
+        account: { id: newAccount._id, name: newAccount.name },
         property: {
           id: newProperty._id,
-          name: newProperty.name,
-          domain: newProperty.domain,
           widgetId: newProperty.widgetId,
+          apiKey: newProperty.apiKey,
         },
       },
     })
@@ -86,7 +93,7 @@ export const registerTenant = catchAsync(
 
 /**
  * @route   POST /api/v1/auth/login
- * @desc    Authenticate admin operator and return an encrypted JWT session access token
+ * @desc    Authenticate admin and return non-sensitive dashboard data
  * @access  Public
  */
 export const loginOperator = catchAsync(
@@ -104,7 +111,7 @@ export const loginOperator = catchAsync(
       )
     }
 
-    const isPasswordCorrect = await bcrypt.compare(
+    const isPasswordCorrect = await AuthUtils.verifyPassword(
       password,
       account.passwordHash,
     )
@@ -112,41 +119,31 @@ export const loginOperator = catchAsync(
       return next(new AppError('Invalid password credentials.', 401))
     }
 
-    // --- NEW: Fetch the associated property for this account ---
     const property = await Property.findOne({ accountId: account._id })
 
-    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-key'
-    const signOptions: SignOptions = {
-      expiresIn:
-        (process.env.JWT_EXPIRES_IN as SignOptions['expiresIn']) || '7d',
-    }
-
-    const token = jwt.sign(
-      {
-        accountId: account._id.toString(),
-        email: account.ownerEmail,
-        role: 'admin',
-      },
-      jwtSecret,
-      signOptions,
-    )
+    const token = AuthUtils.generateSecureToken({
+      accountId: account._id.toString(),
+      email: account.ownerEmail,
+      role: 'admin',
+    })
 
     res.status(200).json({
       status: 'success',
-      message: 'Authentication successful.',
       token,
       data: {
         account: {
           id: account._id,
           name: account.name,
-          ownerEmail: account.ownerEmail,
           plan: account.plan,
         },
         property: property
           ? {
               id: property._id,
-              widgetId: property.widgetId,
               name: property.name,
+              domain: property.domain,
+              widgetId: property.widgetId,
+              settings: property.settings,
+              details: property.details,
             }
           : null,
       },
