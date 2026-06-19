@@ -100,23 +100,23 @@ export const loginOperator = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { email, password } = req.body
 
-    if (!email || !password) {
+   if (!email || !password) {
       return next(new AppError('Please provide both email and password.', 400))
     }
 
     const account = await Account.findOne({ ownerEmail: email })
-    if (!account || !account.isActive) {
-      return next(
-        new AppError('Invalid email credentials or account is suspended.', 401),
-      )
+    
+    if (!account) {
+      return next(new AppError('No account found with this email.', 401))
     }
 
-    const isPasswordCorrect = await AuthUtils.verifyPassword(
-      password,
-      account.passwordHash,
-    )
+    if (!account.isActive) {
+      return next(new AppError('This account is currently suspended. Please contact support.', 403))
+    }
+
+    const isPasswordCorrect = await AuthUtils.verifyPassword(password, account.passwordHash)
     if (!isPasswordCorrect) {
-      return next(new AppError('Invalid password credentials.', 401))
+      return next(new AppError('The password you entered is incorrect.', 401))
     }
 
     const property = await Property.findOne({ accountId: account._id })
