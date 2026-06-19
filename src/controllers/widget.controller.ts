@@ -17,6 +17,12 @@ const origin = req.headers.origin || req.headers.referer;
 // Extract domain from origin (e.g., "https://example.com" -> "example.com")
 const domainFromOrigin = origin ? new URL(origin).hostname : null;
 
+// 2. Fetch Property
+const property = await Property.findOne({ widgetId }).lean()
+if (!property) {
+  return next(new AppError('Invalid widget configuration.', 404))
+  
+}
 // HARD BLOCK: If origin exists and doesn't match the registered domain
 if (domainFromOrigin && !property.domain.includes(domainFromOrigin)) {
   return next(new AppError('Unauthorized domain.', 403));
@@ -27,11 +33,6 @@ if (domainFromOrigin && !property.domain.includes(domainFromOrigin)) {
       return next(new AppError('Widget Configuration ID is required.', 400))
     }
 
-    // 2. Fetch Property
-    const property = await Property.findOne({ widgetId }).lean()
-    if (!property) {
-      return next(new AppError('Invalid widget configuration.', 404))
-    }
 
     // 4. System Status Check
     const liveOperatorCount = await Operator.countDocuments({
