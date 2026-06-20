@@ -41,14 +41,28 @@ connectDB()
 
 
 
-app.use(
-  cors({
-    origin: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  }),
-)
+app.use((req, res, next) => {
+  const origin = req.headers.origin
+
+  // Allow all origins (or you can whitelist your specific list here)
+  res.header('Access-Control-Allow-Origin', origin || '*')
+  res.header(
+    'Access-Control-Allow-Methods',
+    'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+  )
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, Accept',
+  )
+  res.header('Access-Control-Allow-Credentials', 'true')
+
+  // Explicitly handle the preflight OPTIONS request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
+  next()
+})
 
 app.use(express.json())
 
