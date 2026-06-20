@@ -15,8 +15,13 @@ export class SocketService {
   constructor(server: http.Server) {
     this.io = new Server(server, {
       cors: {
-        origin: '*',
+        // Dynamic origin handling:
+        // Echoes the requesting origin back to the browser
+        origin: (origin, callback) => {
+          callback(null, origin || '*')
+        },
         methods: ['GET', 'POST'],
+        credentials: true, // Crucial to match your HTTP setup
       },
     })
 
