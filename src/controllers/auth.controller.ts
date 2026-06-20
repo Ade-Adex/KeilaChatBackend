@@ -7,6 +7,7 @@ import Property from '../models/Property.js'
 import * as AuthUtils from '../utils/auth.utils.js'
 import { sendWelcomeEmail } from '../lib/email.js'
 import bcrypt from 'bcryptjs'
+import { normalizeDomain } from '../utils/domain.utils.js'
 
 /**
  * @route   POST /api/v1/auth/register
@@ -48,12 +49,23 @@ export const registerTenant = catchAsync(
       plan: 'free',
     })
 
-    // 4. Property Provisioning
+    const normalizedDomain = normalizeDomain(propertyDomain)
+
+    // 4.
+    if (!normalizedDomain) {
+      return next(
+        new AppError('Invalid domain format. Please provide a valid URL.', 400),
+      )
+    }
+
+    // 5.
     const { widgetId, apiKey } = AuthUtils.generatePropertyCredentials()
+
+
     const newProperty = await Property.create({
       accountId: newAccount._id,
       name: propertyName,
-      domain: propertyDomain,
+      domain: normalizedDomain,
       widgetId,
       apiKey,
       details: {

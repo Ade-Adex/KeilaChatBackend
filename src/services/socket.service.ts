@@ -6,6 +6,8 @@ import http from 'http'
 import ChatSession from '../models/ChatSession.js'
 import Message from '../models/Message.js'
 import Operator from '../models/Operator.js'
+import { normalizeDomain } from '../utils/domain.utils.js'
+import Property from '../models/Property.js'
 
 export class SocketService {
   private io: Server
@@ -35,11 +37,28 @@ export class SocketService {
         console.log(`💼 Operator Dashboard connected to room: ${roomName}`)
       })
 
-      // 2. CHAT SESSION ROOM: Both Visitors and Operators join this specific conversation tunnel
+      // 2. CHAT SESSION ROOM
       socket.on('join_chat_session', async (data: { sessionId: string }) => {
+        // SECURITY: Validate origin here!
+        const origin =
+          socket.handshake.headers.origin || socket.handshake.headers.referer
+
+        const session = await ChatSession.findById(data.sessionId).populate(
+          'propertyId',
+        )
+        if (!session) return
+
+        const property = await Property.findById(session.propertyId)
+        const requestHostname = normalizeDomain(origin)
+        const registeredDomain = normalizeDomain(property?.domain || '')
+
+        if (requestHostname !== registeredDomain) {
+          socket.emit('error', { message: 'Unauthorized domain access.' })
+          return // Block the socket connection
+        }
+
         const roomName = `session:${data.sessionId}`
         socket.join(roomName)
-        console.log(`💬 Client joined chat workspace room: ${roomName}`)
       })
 
       // 3. TYPING INDICATOR PIPELINE
@@ -77,7 +96,7 @@ export class SocketService {
               socket.emit('error', {
                 message: 'This session is closed. No further messages allowed.',
               })
-              return 
+              return
             }
 
             const nameToSave =

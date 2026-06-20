@@ -17,26 +17,27 @@ const server = http.createServer(app)
 
 connectDB()
 
-// Global Middlewares
-// Replace your existing cors config with this:
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || ['https://keila-chat.vercel.app', 'http://localhost:3000'].includes(origin)) {
-      callback(null, true)
-    } else {
-      callback(null, true)
-    }
-  },
-methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-}))
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow non-browser requests (no origin) or your specific allowed domains
+      const allowedOrigins = [
+        'https://keila-chat.vercel.app',
+        'http://localhost:3000',
+      ]
 
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Content-Security-Policy', "frame-ancestors *");
-  next();
-});
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true)
+      } else {
+        // This is the important fix: actually block the unauthorized origin
+        callback(new Error('Not allowed by CORS'))
+      }
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  }),
+)
 
 app.use(express.json())
 
