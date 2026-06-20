@@ -10,29 +10,53 @@ import { normalizeDomain } from '../utils/domain.utils.js'
 
 export const initializeWidget = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // 1. Extract context from body AND headers
+    // 1. Guard Clause: Validate inputs first
     const { widgetId, visitorTrackingId } = req.body
-
-    const origin = req.headers.origin || req.headers.referer
-
-    // 1. Get the Property
-    const property = await Property.findOne({ widgetId }).lean()
-    if (!property)
-      return next(new AppError('Invalid widget configuration.', 404))
-
-    // 2. Strict Domain Validation
-    const requestHostname = normalizeDomain(origin)
-    const registeredDomain = normalizeDomain(property.domain)
-
-    if (!requestHostname || requestHostname !== registeredDomain) {
-      return next(new AppError('Forbidden: Domain mismatch.', 403))
-    }
-
     if (!widgetId) {
       return next(new AppError('Widget Configuration ID is required.', 400))
     }
 
-    // 4. System Status Check
+    // 2. Lookup Property
+    const property = await Property.findOne({ widgetId }).lean()
+    if (!property) {
+      console.error(
+        `[WidgetInit] 404 Error: Widget ID '${widgetId}' not found in database.`,
+      )
+      return next(
+        new AppError(
+          'Invalid widget configuration. Please check your data-id.',
+          404,
+        ),
+      )
+    }
+
+    // 3. Domain Validation (with logging)
+    const origin = req.headers.origin || req.headers.referer
+    const requestHostname = normalizeDomain(origin)
+    const registeredDomain = normalizeDomain(property.domain)
+
+    if (!requestHostname) {
+      console.error(
+        `[WidgetInit] 403 Error: Could not determine origin for widget '${widgetId}'. Referer: ${origin}`,
+      )
+      return next(
+        new AppError('Access denied: Unable to verify origin domain.', 403),
+      )
+    }
+
+    if (requestHostname !== registeredDomain) {
+      console.error(
+        `[WidgetInit] 403 Error: Domain mismatch. Request from '${requestHostname}' tried to access property registered to '${registeredDomain}'`,
+      )
+      return next(
+        new AppError(
+          'Forbidden: Widget is not authorized for this domain.',
+          403,
+        ),
+      )
+    }
+
+    // 4. System Status
     const liveOperatorCount = await Operator.countDocuments({
       accountId: property.accountId,
       isOnline: true,
@@ -52,8 +76,6 @@ export const initializeWidget = catchAsync(
     }
 
     // 6. Return Payload
-    // By sending all settings in one shot, the frontend can render immediately
-    // without needing subsequent "settings" API calls.
     res.status(200).json({
       status: 'success',
       data: {
@@ -62,7 +84,7 @@ export const initializeWidget = catchAsync(
           name: property.name,
           settings: {
             ...property.settings,
-            isOnline: liveOperatorCount > 0, // Dynamic live status
+            isOnline: liveOperatorCount > 0,
           },
         },
         visitor: visitorData
@@ -80,7 +102,6 @@ export const initializeWidget = catchAsync(
 export const verifyWidget = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { widgetId } = req.body
-    // The Server Component sends the referer header
     const referer = req.headers.referer
 
     if (!widgetId) {
@@ -89,15 +110,20 @@ export const verifyWidget = catchAsync(
 
     const property = await Property.findOne({ widgetId }).lean()
 
-    // Normalize both for comparison using your existing utility
-    const requestHostname = normalizeDomain(referer)
-    const registeredHostname = normalizeDomain(property?.domain)
+    if (!property) {
+      console.error(
+        `[WidgetVerify] 404 Error: Widget ID '${widgetId}' not found.`,
+      )
+      return next(new AppError('Invalid Widget ID.', 404))
+    }
 
-    if (
-      !property ||
-      !requestHostname ||
-      requestHostname !== registeredHostname
-    ) {
+    const requestHostname = normalizeDomain(referer)
+    const registeredHostname = normalizeDomain(property.domain)
+
+    if (!requestHostname || requestHostname !== registeredHostname) {
+      console.error(
+        `[WidgetVerify] 403 Error: Domain mismatch. Request: '${requestHostname}', Expected: '${registeredHostname}'`,
+      )
       return next(new AppError('Unauthorized Domain', 403))
     }
 
