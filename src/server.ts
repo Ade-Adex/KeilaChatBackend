@@ -17,22 +17,33 @@ const server = http.createServer(app)
 
 connectDB()
 
+// app.use(
+//   cors({
+//     origin: (origin, callback) => {
+//       // Allow non-browser requests (no origin) or your specific allowed domains
+//       const allowedOrigins = [
+//         'https://keila-chat.vercel.app',
+//         'http://localhost:3000',
+//       ]
+
+//       if (!origin || allowedOrigins.includes(origin)) {
+//         callback(null, true)
+//       } else {
+//         // This is the important fix: actually block the unauthorized origin
+//         callback(new Error('Not allowed by CORS'))
+//       }
+//     },
+//     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+//     credentials: true,
+//     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+//   }),
+// )
+
+
+
 app.use(
   cors({
-    origin: (origin, callback) => {
-      // Allow non-browser requests (no origin) or your specific allowed domains
-      const allowedOrigins = [
-        'https://keila-chat.vercel.app',
-        'http://localhost:3000',
-      ]
-
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true)
-      } else {
-        // This is the important fix: actually block the unauthorized origin
-        callback(new Error('Not allowed by CORS'))
-      }
-    },
+    origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
