@@ -76,3 +76,31 @@ export const initializeWidget = catchAsync(
     })
   },
 )
+
+export const verifyWidget = catchAsync(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const { widgetId } = req.body
+    // The Server Component sends the referer header
+    const referer = req.headers.referer
+
+    if (!widgetId) {
+      return next(new AppError('Widget ID is required.', 400))
+    }
+
+    const property = await Property.findOne({ widgetId }).lean()
+
+    // Normalize both for comparison using your existing utility
+    const requestHostname = normalizeDomain(referer)
+    const registeredHostname = normalizeDomain(property?.domain)
+
+    if (
+      !property ||
+      !requestHostname ||
+      requestHostname !== registeredHostname
+    ) {
+      return next(new AppError('Unauthorized Domain', 403))
+    }
+
+    res.status(200).json({ status: 'success' })
+  },
+)
