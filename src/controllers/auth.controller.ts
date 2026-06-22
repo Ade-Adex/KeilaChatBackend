@@ -222,7 +222,7 @@ export const registerInvitedOperator = catchAsync(
 
 /**
  * @route   POST /api/v1/auth/login
- * @desc    Authenticate admin and return non-sensitive data
+ * @desc    Authenticate operator (Admin or Agent) and return system session payload
  * @access  Public
  */
 export const loginOperator = catchAsync(
@@ -233,46 +233,82 @@ export const loginOperator = catchAsync(
       return next(new AppError('Please provide both email and password.', 400))
     }
 
-    const account = await Account.findOne({ ownerEmail: email })
-    if (!account) {
-      return next(new AppError('No account found with this email.', 401))
+    // 1. Locate the individual operator profile instead of the high-level tenant account
+    const operator = await Operator.findOne({ email }).select('+passwordHash')
+    if (!operator) {
+      return next(
+        new AppError('No operator profile found with this email.', 401),
+      )
     }
 
-    if (!account.isActive) {
+    // 🚀 FIX: Type guard verification to confirm passwordHash exists
+    if (!operator.passwordHash) {
       return next(
         new AppError(
-          'This account is currently suspended. Please contact support.',
+          'Account credentials are not fully configured. Please complete your registration via the setup link.',
+          400,
+        ),
+      )
+    }
+
+    // 2. Check if the individual operator has completed their signup registration/onboarding
+    if (operator.status !== 'active') {
+      return next(
+        new AppError(
+          'Your invitation is pending. Please complete registration via your email setup link.',
           403,
         ),
       )
     }
 
+    // 3. Verify the credentials against the operator's password hash
+    // TypeScript is happy now because operator.passwordHash is guaranteed to be a string here!
     const isPasswordCorrect = await AuthUtils.verifyPassword(
       password,
-      account.passwordHash,
+      operator.passwordHash,
     )
-    if (!isPasswordCorrect) {
-      return next(new AppError('The password you entered is incorrect.', 401))
+
+    // 4. Extract parent tenant workspace context mapping
+    const account = await Account.findById(operator.accountId)
+    if (!account) {
+      return next(
+        new AppError('The associated workspace profile no longer exists.', 404),
+      )
     }
 
+    if (!account.isActive) {
+      return next(
+        new AppError(
+          'This workspace ecosystem is currently suspended. Please contact your administrator.',
+          403,
+        ),
+      )
+    }
+
+    // 5. Query for property settings tied to this workspace layout context
     const property = await Property.findOne({ accountId: account._id })
 
+    // 6. Generate state token containing precise, individual authorization rules (e.g. role: admin | agent)
     const token = AuthUtils.generateSecureToken({
+      operatorId: operator._id.toString(),
       accountId: account._id.toString(),
-      email: account.ownerEmail,
-      role: 'admin',
+      email: operator.email,
+      role: operator.role, // 'admin' or 'agent'
     })
 
     // Set secure cookie for proxy tracking
     res.cookie('auth_token', token, COOKIE_OPTIONS)
 
+    // 7. Standardized data payload output matches the exact structure required by your Zustand useAuthStore!
     res.status(200).json({
       status: 'success',
       token,
       data: {
         account: {
           id: account._id,
+          accountId: account._id, // included both variants to safely satisfy frontend model parsing structures
           name: account.name,
+          ownerEmail: operator.email, // satisfies useAuthStore session assignment mapping rules
           plan: account.plan,
         },
         property: property
@@ -289,8 +325,6 @@ export const loginOperator = catchAsync(
     })
   },
 )
-
-
 
 /**
  * @route   POST /api/v1/auth/logout
