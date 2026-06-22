@@ -77,6 +77,7 @@ import connectDB from './config/db.js'
 import appRouter from './routes/index.js'
 import { globalErrorHandler } from './config/errorHandler.js'
 import { SocketService } from './services/socket.service.js'
+import cookieParser from 'cookie-parser'
 
 const app = express()
 const server = http.createServer(app)
@@ -100,6 +101,9 @@ app.use(
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
   }),
 )
+
+
+app.use(cookieParser())
 
 // 2. Middleware
 app.use(express.json())

@@ -1,17 +1,24 @@
-// /src/controllers/auth.controller.ts
 import type { Request, Response, NextFunction } from 'express'
 import { catchAsync } from '../config/errorHandler.js'
 import { AppError } from '../services/appError.js'
 import Account from '../models/Account.js'
 import Property from '../models/Property.js'
+import Operator from '../models/Operator.js' // 👈 Added
 import * as AuthUtils from '../utils/auth.utils.js'
 import { sendWelcomeEmail } from '../lib/email.js'
-import bcrypt from 'bcryptjs'
 import { normalizeDomain } from '../utils/domain.utils.js'
+import { ENV } from '../config/env.js'
+
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: ENV.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 Days
+}
 
 /**
  * @route   POST /api/v1/auth/register
- * @desc    Onboard a new tenant account and their initial property
+ * @desc    Onboard a new tenant account and login immediately (Low friction experience)
  * @access  Public
  */
 export const registerTenant = catchAsync(
@@ -19,7 +26,6 @@ export const registerTenant = catchAsync(
     const { companyName, ownerEmail, password, propertyName, propertyDomain } =
       req.body
 
-    // 1. Validation
     if (
       !companyName ||
       !ownerEmail ||
@@ -32,35 +38,46 @@ export const registerTenant = catchAsync(
       )
     }
 
-    // 2. Duplicate Check
-    const existingAccount = await Account.findOne({ ownerEmail })
-    if (existingAccount) {
-      return next(
-        new AppError('An account with this email address already exists.', 409),
-      )
-    }
-
-    // 3. Account Provisioning
-    const passwordHash = await AuthUtils.hashPassword(password)
-    const newAccount = await Account.create({
-      name: companyName,
-      ownerEmail,
-      passwordHash,
-      plan: 'free',
-    })
-
+    // FIX 2: Validate the domain format UP FRONT before hitting the DB to avoid orphaned data
     const normalizedDomain = normalizeDomain(propertyDomain)
-
-    // 4.
     if (!normalizedDomain) {
       return next(
         new AppError('Invalid domain format. Please provide a valid URL.', 400),
       )
     }
 
-    // 5.
-    const { widgetId, apiKey } = AuthUtils.generatePropertyCredentials()
+    const existingAccount = await Account.findOne({
+      ownerEmail: ownerEmail.toLowerCase().trim(),
+    })
+    if (existingAccount) {
+      return next(
+        new AppError('An account with this email address already exists.', 409),
+      )
+    }
 
+    // 1. Create Tenant Account Frame
+    const passwordHash = await AuthUtils.hashPassword(password)
+    const newAccount = await Account.create({
+      name: companyName,
+      ownerEmail: ownerEmail.toLowerCase().trim(),
+      passwordHash,
+      plan: 'free',
+    })
+
+    // FIX 1: Provision the primary Administrator inside your Operator collection
+    await Operator.create({
+      accountId: newAccount._id,
+      email: newAccount.ownerEmail,
+      passwordHash,
+      role: 'admin',
+      status: 'active',
+      assignedProperties: [],
+      isOnline: false,
+    })
+
+    // 2. Create Default Workspace Property
+    const { widgetId, apiKey } = AuthUtils.generatePropertyCredentials()
+    const dashboardLink = ENV.BASE_URL || ''
 
     const newProperty = await Property.create({
       accountId: newAccount._id,
@@ -83,20 +100,35 @@ export const registerTenant = catchAsync(
       },
     })
 
-    // 5. Post-Registration: Welcome Email (Fire and forget)
-    sendWelcomeEmail(ownerEmail, companyName).catch((err) =>
-      console.error('Registration email failed:', err),
+    // 3. Authorization Session Emission
+    const token = AuthUtils.generateSecureToken({
+      accountId: newAccount._id.toString(),
+      email: newAccount.ownerEmail,
+      role: 'admin',
+    })
+
+    res.cookie('auth_token', token, COOKIE_OPTIONS)
+
+    sendWelcomeEmail(newAccount.ownerEmail, companyName, dashboardLink).catch(
+      (err) => console.error('Registration email failed:', err),
     )
 
-    // 6. Response
     res.status(201).json({
       status: 'success',
+      token,
       data: {
-        account: { id: newAccount._id, name: newAccount.name },
+        account: {
+          id: newAccount._id,
+          name: newAccount.name,
+          plan: newAccount.plan,
+        },
         property: {
           id: newProperty._id,
+          name: newProperty.name,
+          domain: newProperty.domain,
           widgetId: newProperty.widgetId,
-          apiKey: newProperty.apiKey,
+          settings: newProperty.settings,
+          details: newProperty.details,
         },
       },
     })
@@ -104,29 +136,121 @@ export const registerTenant = catchAsync(
 )
 
 /**
+ * @route   POST /api/v1/auth/register-operator
+ * @desc    Accept token verification, attach password data, and authorize session instantly
+ * @access  Public
+ */
+export const registerInvitedOperator = catchAsync(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const { email, password, token } = req.body
+
+    if (!email || !password || !token) {
+      return next(
+        new AppError('Missing required registration credentials.', 400),
+      )
+    }
+
+    const operator = await Operator.findOne({
+      email: email.toLowerCase().trim(),
+      inviteToken: token,
+      status: 'invited',
+    })
+
+    if (!operator) {
+      return next(
+        new AppError(
+          'Invalid token pattern or invite registration correlation match failed.',
+          404,
+        ),
+      )
+    }
+
+    // 1. Hydrate security credentials and upgrade record status
+    operator.passwordHash = await AuthUtils.hashPassword(password)
+    operator.status = 'active'
+
+    // FIX 3: Safe removal method compatible with exactOptionalPropertyTypes: true
+    operator.set('inviteToken', undefined)
+
+    await operator.save()
+
+    // 2. Fetch tenant layout context states for your Zustand engine pipeline
+    const account = await Account.findById(operator.accountId)
+    if (!account) {
+      return next(
+        new AppError(
+          'Associated multi-tenant workspace platform layer missing.',
+          404,
+        ),
+      )
+    }
+
+    const property = await Property.findOne({ accountId: account._id })
+
+    // 3. Issue persistent session state cookies
+    const sessionToken = AuthUtils.generateSecureToken({
+      accountId: account._id.toString(),
+      email: operator.email,
+      role: operator.role,
+    })
+
+    res.cookie('auth_token', sessionToken, COOKIE_OPTIONS)
+
+    res.status(200).json({
+      status: 'success',
+      token: sessionToken,
+      data: {
+        account: {
+          id: account._id,
+          name: account.name,
+          plan: account.plan,
+        },
+        property: property
+          ? {
+              id: property._id,
+              name: property.name,
+              domain: property.domain,
+              widgetId: property.widgetId,
+              settings: property.settings,
+              details: property.details,
+            }
+          : null,
+      },
+    })
+  },
+)
+
+/**
  * @route   POST /api/v1/auth/login
- * @desc    Authenticate admin and return non-sensitive dashboard data
+ * @desc    Authenticate admin and return non-sensitive data
  * @access  Public
  */
 export const loginOperator = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { email, password } = req.body
 
-   if (!email || !password) {
+    if (!email || !password) {
       return next(new AppError('Please provide both email and password.', 400))
     }
 
     const account = await Account.findOne({ ownerEmail: email })
-    
     if (!account) {
       return next(new AppError('No account found with this email.', 401))
     }
 
     if (!account.isActive) {
-      return next(new AppError('This account is currently suspended. Please contact support.', 403))
+      return next(
+        new AppError(
+          'This account is currently suspended. Please contact support.',
+          403,
+        ),
+      )
     }
 
-    const isPasswordCorrect = await AuthUtils.verifyPassword(password, account.passwordHash)
+    const isPasswordCorrect = await AuthUtils.verifyPassword(
+      password,
+      account.passwordHash,
+    )
     if (!isPasswordCorrect) {
       return next(new AppError('The password you entered is incorrect.', 401))
     }
@@ -138,6 +262,9 @@ export const loginOperator = catchAsync(
       email: account.ownerEmail,
       role: 'admin',
     })
+
+    // Set secure cookie for proxy tracking
+    res.cookie('auth_token', token, COOKIE_OPTIONS)
 
     res.status(200).json({
       status: 'success',
@@ -161,4 +288,26 @@ export const loginOperator = catchAsync(
       },
     })
   },
+)
+
+
+
+/**
+ * @route   POST /api/v1/auth/logout
+ * @desc    Clear the application authorization token cookie
+ * @access  Public
+ */
+export const logoutOperator = catchAsync(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    res.clearCookie('auth_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    })
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Logged out successfully from backend server boundary.',
+    })
+  }
 )

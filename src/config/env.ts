@@ -27,4 +27,5 @@ export const ENV = {
     MAIL_USER:
       process.env.RESEND_MAIL_USER || 'no-reply@mail.christbcogbomoso.org',
   },
+  BASE_URL: process.env.BASE_URL,
 }

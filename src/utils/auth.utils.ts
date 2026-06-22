@@ -10,7 +10,6 @@ export const hashPassword = async (password: string): Promise<string> => {
   return await bcrypt.hash(password, salt)
 }
 
-// Add this comparison utility
 export const verifyPassword = async (
   password: string,
   hash: string,
@@ -22,6 +21,11 @@ export const generateSecureToken = (payload: object): string => {
   return jwt.sign(payload, ENV.JWT.SECRET, {
     expiresIn: ENV.JWT.EXPIRES_IN as any,
   })
+}
+
+// Generates a random, cryptographically secure hex string for invitations
+export const generateInvitationToken = (): string => {
+  return crypto.randomBytes(32).toString('hex')
 }
 
 export const generatePropertyCredentials = () => ({

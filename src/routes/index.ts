@@ -6,6 +6,7 @@ import widgetRouter from './widget.routes.js'
 import authRouter from './auth.routes.js'
 import sessionRouter from './session.routes.js'
 import propertyRouter from './property.routes.js'
+import operatorRouter from './operator.routes.js'
 
 const router = Router()
 
@@ -32,5 +33,6 @@ router.use('/auth', authRouter)
 router.use('/widget', widgetRouter)
 router.use('/sessions', sessionRouter)
 router.use('/properties', propertyRouter)
+router.use('/operators', operatorRouter)
 
 export default router

@@ -3,13 +3,17 @@
 import { Schema, model } from 'mongoose'
 import type { Document, Types } from 'mongoose'
 
+// /src/models/Operator.ts
+
 export interface IOperator extends Document {
   accountId: Types.ObjectId
-  firstName: string
-  lastName: string
+  firstName?: string | undefined  
+  lastName?: string | undefined   
   email: string
-  passwordHash: string
+  passwordHash?: string | undefined 
   role: 'admin' | 'agent'
+  status: 'invited' | 'active' 
+  inviteToken?: string | undefined 
   assignedProperties: Types.ObjectId[]
   isOnline: boolean
   createdAt: Date
@@ -26,12 +30,12 @@ const OperatorSchema = new Schema<IOperator>(
     },
     firstName: {
       type: String,
-      required: true,
+      required: false, 
       trim: true,
     },
     lastName: {
       type: String,
-      required: true,
+      required: false, 
       trim: true,
     },
     email: {
@@ -42,12 +46,21 @@ const OperatorSchema = new Schema<IOperator>(
     },
     passwordHash: {
       type: String,
-      required: true,
+      required: false, 
     },
     role: {
       type: String,
       enum: ['admin', 'agent'],
       default: 'agent',
+    },
+    status: {
+      type: String,
+      enum: ['invited', 'active'],
+      default: 'invited', 
+    },
+    inviteToken: {
+      type: String,
+      required: false,
     },
     assignedProperties: [
       {
