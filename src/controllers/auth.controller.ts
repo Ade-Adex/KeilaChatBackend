@@ -9,10 +9,19 @@ import { sendWelcomeEmail } from '../lib/email.js'
 import { normalizeDomain } from '../utils/domain.utils.js'
 import { ENV } from '../config/env.js'
 
+// const COOKIE_OPTIONS = {
+//   httpOnly: true,
+//   secure: ENV.NODE_ENV === 'production',
+//   sameSite: 'lax' as const,
+//   maxAge: 30 * 24 * 60 * 60 * 1000, // 30 Days
+// }
+
+
+// On your backend config/controller file
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: ENV.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  secure: true, // MUST be true for sameSite: 'none' to work
+  sameSite: 'none' as const, // Allows cross-origin cookie storage
   maxAge: 30 * 24 * 60 * 60 * 1000, // 30 Days
 }
 
