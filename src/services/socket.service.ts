@@ -107,44 +107,22 @@ export class SocketService {
           }
 
           // Send confirmation only to other clients already connected to the isolated stream
-          // socket.to(roomName).emit('presence_notification', systemNotification)
-          this.io.to(roomName).emit('presence_notification', systemNotification)
+          socket.to(roomName).emit('presence_notification', systemNotification)
         },
       )
 
       // 3. TYPING INDICATOR PIPELINE
-      // socket.on(
-      //   'typing',
-      //   (data: {
-      //     sessionId: string
-      //     senderName: string
-      //     isTyping: boolean
-      //   }) => {
-      //     if (!data.sessionId) return
-      //     const roomName = `session:${data.sessionId}`
-      //     socket.to(roomName).emit('user_typing', {
-      //       senderName: data.senderName,
-      //       isTyping: data.isTyping,
-      //     })
-      //   },
-      // )
-
-
       socket.on(
         'typing',
         (data: {
           sessionId: string
           senderName: string
-          senderType: 'visitor' | 'operator'
           isTyping: boolean
         }) => {
           if (!data.sessionId) return
-
           const roomName = `session:${data.sessionId}`
-
           socket.to(roomName).emit('user_typing', {
             senderName: data.senderName,
-            senderType: data.senderType,
             isTyping: data.isTyping,
           })
         },
