@@ -19,8 +19,6 @@ export const bootstrapExpress = () => {
       allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     }),
   )
-
-  app.options('*', cors())
   
   app.use(cookieParser())
   app.use(express.json())
