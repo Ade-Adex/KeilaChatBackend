@@ -3,27 +3,93 @@ import type { Request, Response, NextFunction } from 'express'
 import { catchAsync } from '../config/errorHandler.js'
 import { AppError } from '../services/appError.js'
 import Operator from '../models/Operator.js'
-import Property from '../models/Property.js' // Imported Property model
-import { sendOperatorInvitationEmail } from '../lib/email.js'
-import { generateInvitationToken } from '../utils/auth.utils.js'
-import { ENV } from '../config/env.js'
 import Account from '../models/Account.js'
+import type { AuthRequest } from '../middleware/auth.middleware.js'
+import {
+  getOperatorsByAccount,
+  inviteOperatorToAccount,
+  verifyOperatorInvite,
+  acceptOperatorInvite,
+} from '../services/operator.service.js'
+
+/* -------------------------------------------------------------------------- */
+/*                               GET PROFILE                                  */
+/* -------------------------------------------------------------------------- */
+
+export const getProfile = catchAsync(
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const operatorId = req.user?.userId
+
+    if (!operatorId) {
+      return next(new AppError('Unauthorized', 401))
+    }
+
+    const operator = await Operator.findById(operatorId).select(
+      '-passwordHash -inviteToken',
+    )
+
+    if (!operator) {
+      return next(new AppError('Operator not found', 404))
+    }
+
+    const account = await Account.findById(operator.accountId)
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        operator,
+        account,
+      },
+    })
+  },
+)
+
+/* -------------------------------------------------------------------------- */
+/*                             UPDATE PROFILE                                 */
+/* -------------------------------------------------------------------------- */
+
+export const updateProfile = catchAsync(
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const operatorId = req.user?.userId
+
+    if (!operatorId) {
+      return next(new AppError('Unauthorized', 401))
+    }
+
+    const updated = await Operator.findByIdAndUpdate(
+      operatorId,
+      {
+        firstName: req.body.firstName,
+        lastName: req.body.lastName,
+        email: req.body.email,
+        avatar: req.body.avatar,
+      },
+      {
+        returnDocument: 'after',
+      },
+    ).select('-passwordHash -inviteToken')
+
+    return res.status(200).json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: updated,
+    })
+  },
+)
 
 // @desc    Get all operators assigned to an account ecosystem
 // @route   GET /api/v1/operators
 export const getOperators = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const { accountId } = req.query
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const accountId = req.user?.accountId
 
     if (!accountId) {
-      return next(new AppError('Missing Account ID scope context.', 400))
+      return next(new AppError('Account context missing.', 400))
     }
 
-    const operators = await Operator.find({ accountId: accountId as string })
-      .select('-passwordHash -inviteToken')
-      .sort({ createdAt: -1 })
+    const operators = await getOperatorsByAccount(accountId)
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
       data: operators,
     })
@@ -33,64 +99,58 @@ export const getOperators = catchAsync(
 // @desc    Invite a team member via secure email hook
 // @route   POST /api/v1/operators/invite
 export const inviteOperator = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const { accountId, email, role } = req.body
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const accountId = req.user?.accountId
 
-    if (!email || !accountId) {
-      return next(new AppError('Missing required field entries.', 400))
+    if (!accountId) {
+      return next(new AppError('Account context missing.', 400))
     }
 
-    const targetEmail = email.toLowerCase().trim()
+    const { email, role } = req.body
 
-    // 1. Ensure the operator hasn't already been invited to this account
-    const existingOperator = await Operator.findOne({
-      accountId,
-      email: targetEmail,
-    })
-
-    if (existingOperator) {
-      return next(
-        new AppError(
-          'An operator or invitation with this email already exists under your account ecosystem.',
-          400,
-        ),
-      )
+    if (!email) {
+      return next(new AppError('Email is required.', 400))
     }
 
- const accountDoc = await Account.findById(accountId)
- const clientCompanyName = accountDoc?.name || 'Our Platform Workspace'
+    await inviteOperatorToAccount(accountId, email, role ?? 'agent')
 
-    // Fallback default domain setting if a custom tracking property hasn't been added yet
-    // const targetDomain = clientProperty?.domain || ''
-    const targetDomain = ENV.BASE_URL || ''
-
-    // 3. Generate secure token
-    const inviteToken = generateInvitationToken()
-
-    // 4. Create operator placeholder with an 'invited' flag status
-    await Operator.create({
-      accountId,
-      email: targetEmail,
-      role: role || 'agent',
-      status: 'invited',
-      inviteToken,
-      assignedProperties: [],
-      isOnline: false,
-    })
-
-    // 5. Dispatch email containing the dynamic client domain
-    await sendOperatorInvitationEmail(
-      targetEmail,
-      role || 'agent',
-      inviteToken,
-      targetDomain,
-      clientCompanyName,
-    )
-
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
-      message:
-        'Invitation successfully generated and sent to target recipient.',
+      message: 'Invitation successfully generated and sent.',
+    })
+  },
+)
+
+export const verifyInvite = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const token = req.query.token as string
+
+    if (!token) {
+      return next(new AppError('Invitation token is required.', 400))
+    }
+
+    const invite = await verifyOperatorInvite(token)
+
+    return res.status(200).json({
+      status: 'success',
+      data: invite,
+    })
+  },
+)
+
+export const acceptInvite = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { token, firstName, lastName, password } = req.body
+
+    if (!token || !firstName || !lastName || !password) {
+      return next(new AppError('Missing required fields.', 400))
+    }
+
+    await acceptOperatorInvite(token, firstName, lastName, password)
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Operator account activated successfully.',
     })
   },
 )

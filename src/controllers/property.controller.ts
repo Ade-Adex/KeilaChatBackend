@@ -1,43 +1,82 @@
 // /src/controllers/property.controller.ts
+import type { Response } from 'express'
 
-import type { Request, Response, NextFunction } from 'express'
 import { catchAsync } from '../config/errorHandler.js'
-import { AppError } from '../services/appError.js'
-import Property from '../models/Property.js'
-import mongoose from 'mongoose'
+import { PropertyService } from '../services/property.service.js'
+
+import type { AuthRequest } from '../middleware/auth.middleware.js'
+
+interface PropertyParams {
+  propertyId: string
+}
+
+/* -------------------------------------------------------------------------- */
+/*                          GET WEBSITE SETTINGS                              */
+/* -------------------------------------------------------------------------- */
+
+export const getWebsiteSettings = catchAsync(
+  async (req: AuthRequest, res: Response) => {
+    const accountId = req.headers['x-account-id'] as string
+
+    const property = await PropertyService.getWebsiteSettings(accountId)
+
+    res.status(200).json({
+      success: true,
+      data: {
+        property,
+      },
+    })
+  },
+)
+/* -------------------------------------------------------------------------- */
+/*                        UPDATE WEBSITE SETTINGS                             */
+/* -------------------------------------------------------------------------- */
+
+export const updateWebsiteSettings = catchAsync(
+  async (req: AuthRequest, res: Response) => {
+    const accountId = req.headers['x-account-id'] as string
+
+    const property = await PropertyService.updateWebsiteSettings(
+      accountId,
+      req.body,
+    )
+
+    res.status(200).json({
+      success: true,
+      data: {
+        property,
+      },
+    })
+  },
+)
+
+/* -------------------------------------------------------------------------- */
+/*                          GET PROPERTY DETAILS                              */
+/* -------------------------------------------------------------------------- */
 
 export const getPropertyDetails = catchAsync(
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  async (req: AuthRequest, res: Response) => {
     const { propertyId } = req.params
 
-    console.log('Incoming Property Query ID Request:', propertyId)
-
-    // 1. Structural Guards
-    if (!propertyId || typeof propertyId !== 'string') {
-      return next(new AppError('Property ID parameter is required.', 400))
+    if (typeof propertyId !== 'string') {
+      throw new Error('Invalid property id')
     }
 
-    if (!mongoose.Types.ObjectId.isValid(propertyId)) {
-      return next(new AppError('Invalid Property ID verification format.', 400))
-    }
+    const property = await PropertyService.getPropertyDetails(propertyId)
 
-    // 2. Fetch data cleanly via lean queries
-    const property = await Property.findById(propertyId).lean()
-
-    if (!property) {
-      return next(new AppError('Requested property resource not found.', 404))
-    }
-
-    // 3. CORRECTION: Format the response shape to match your frontend types explicitly
     res.status(200).json({
-      status: 'success',
+      success: true,
       data: {
-        id: property._id.toString(), // Convert MongoDB _id to frontend-friendly id string
+        id: property._id.toString(),
         widgetId: property.widgetId,
         name: property.name,
         domain: property.domain,
+        allowedDomains: property.allowedDomains,
         details: property.details,
         settings: property.settings,
+        workingHours: property.workingHours,
+        createdAt: property.createdAt,
+        updatedAt: property.updatedAt,
       },
     })
   },

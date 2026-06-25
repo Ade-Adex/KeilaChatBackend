@@ -1,27 +1,7 @@
 // /src/models/Property.ts
-import { Schema, model } from 'mongoose'
-import type { Document, Types } from 'mongoose'
 
-export interface IProperty extends Document {
-  accountId: Types.ObjectId
-  name: string
-  domain: string
-  widgetId: string
-  apiKey: string
-  details: {
-    category: string
-    subCategory: string
-    region: string
-    description: string
-    propertyImageUrl: string
-  }
-  settings: {
-    themeColor: string
-    headingText: string
-    onlineStatus: boolean
-    trackIp: boolean
-  }
-}
+import { Schema, model } from 'mongoose'
+import type { IProperty } from '../types/property.types.js'
 
 const PropertySchema = new Schema<IProperty>(
   {
@@ -31,22 +11,41 @@ const PropertySchema = new Schema<IProperty>(
       required: true,
       index: true,
     },
-    name: { type: String, required: true, trim: true },
-    domain: { type: String, required: true, trim: true },
+
+    name: { type: String, required: true },
+    domain: { type: String, required: true },
+
+    allowedDomains: [{ type: String }],
+
     widgetId: { type: String, required: true, unique: true },
     apiKey: { type: String, required: true, unique: true },
+
     details: {
-      category: { type: String, default: 'General' },
-      subCategory: { type: String, default: '' },
-      region: { type: String, default: 'Global' },
-      description: { type: String, default: '' },
-      propertyImageUrl: { type: String, default: '' },
+      category: String,
+      subCategory: String,
+      region: String,
+      description: String,
+      logoUrl: String,
     },
+
     settings: {
       themeColor: { type: String, default: '#0070f3' },
-      headingText: { type: String, default: 'Chat with us!' },
+      headingText: { type: String, default: 'Chat with us' },
+
       onlineStatus: { type: Boolean, default: true },
       trackIp: { type: Boolean, default: true },
+
+      autoAssign: { type: Boolean, default: true },
+      aiEnabled: { type: Boolean, default: true },
+      aiFallbackToHuman: { type: Boolean, default: true },
+
+      responseTimeGoalMs: Number,
+    },
+
+    workingHours: {
+      enabled: { type: Boolean, default: false },
+      timezone: String,
+      schedule: Schema.Types.Mixed,
     },
   },
   { timestamps: true },

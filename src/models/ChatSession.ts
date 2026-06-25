@@ -1,17 +1,7 @@
 // /src/models/ChatSession.ts
 
 import { Schema, model } from 'mongoose'
-import type { Document, Types } from 'mongoose'
-
-export interface IChatSession extends Document {
-  propertyId: Types.ObjectId
-  visitorId: Types.ObjectId
-  assignedOperatorId: Types.ObjectId | null
-  status: 'unassigned' | 'active' | 'closed'
-  endedAt: Date | null
-  createdAt: Date
-  updatedAt: Date
-}
+import type { IChatSession } from '../types/chat-session.types.js'
 
 const ChatSessionSchema = new Schema<IChatSession>(
   {
@@ -21,30 +11,61 @@ const ChatSessionSchema = new Schema<IChatSession>(
       required: true,
       index: true,
     },
+
     visitorId: {
       type: Schema.Types.ObjectId,
       ref: 'Visitor',
       required: true,
       index: true,
     },
+
     assignedOperatorId: {
       type: Schema.Types.ObjectId,
       ref: 'Operator',
       default: null,
-      index: true,
     },
+
     status: {
       type: String,
-      enum: ['unassigned', 'active', 'closed'],
-      default: 'unassigned',
-      index: true,
+      enum: ['queued', 'active', 'waiting', 'closed', 'transferred'],
+      default: 'queued',
     },
-    endedAt: {
-      type: Date,
-      default: null,
+
+    priority: {
+      type: String,
+      enum: ['low', 'normal', 'high'],
+      default: 'normal',
     },
+
+    channel: {
+      type: String,
+      enum: ['widget', 'api'],
+      default: 'widget',
+    },
+
+    aiEnabled: { type: Boolean, default: true },
+    aiHandled: { type: Boolean, default: false },
+    aiEscalated: { type: Boolean, default: false },
+
+    aiConfidenceScore: Number,
+
+    visitorContext: {
+      ip: String,
+      userAgent: String,
+      currentPage: String,
+      referrer: String,
+    },
+
+    startedAt: Date,
+    firstResponseAt: Date,
+    endedAt: Date,
+
+    waitTimeMs: Number,
+    resolutionTimeMs: Number,
   },
   { timestamps: true },
 )
+
+ChatSessionSchema.index({ propertyId: 1, status: 1 })
 
 export default model<IChatSession>('ChatSession', ChatSessionSchema)

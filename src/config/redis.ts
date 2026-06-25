@@ -1,26 +1,38 @@
+// /src/config/redis.ts
+
 import { Redis } from 'ioredis'
+import logger from '../bootstrap/logger.js'
 
 const redisUrl = process.env.REDIS_URL
+
 if (!redisUrl) {
-  console.warn('⚠️ WARNING: REDIS_URL not specified in environment variables.')
+  logger.warn('REDIS_URL not specified. Falling back to localhost.')
 }
 
-// Named import makes Redis perfectly constructable here
 const redisClient = new Redis(redisUrl || 'redis://127.0.0.1:6379')
 
+// Connection success
 redisClient.on('connect', () => {
-  console.log('⚡ Redis In-Memory Cache Connected')
+  logger.info('⚡ Redis In-Memory Cache Connected')
 })
 
+// Ready event (more reliable than connect)
+redisClient.on('ready', () => {
+  logger.info('🚀 Redis Client Ready')
+})
+
+// Error handling
 redisClient.on('error', (err: unknown) => {
   if (err instanceof Error) {
-    console.error('❌ Redis Connection Error:', err.message)
+    logger.error(`❌ Redis Connection Error: ${err.message}`)
   } else {
-    console.error(
-      '❌ Redis Connection Error: An unexpected error occurred',
-      err,
-    )
+    logger.error('❌ Redis Connection Error: Unknown error', err as any)
   }
+})
+
+// Optional: reconnect tracking
+redisClient.on('reconnecting', (time: number) => {
+  logger.warn(`🔁 Redis reconnecting in ${time}ms`)
 })
 
 export default redisClient

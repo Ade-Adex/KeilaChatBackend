@@ -1,25 +1,7 @@
 //  /src/models/Message.ts
 
 import { Schema, model } from 'mongoose'
-import type { Document, Types } from 'mongoose'
-
-export interface IAttachment {
-  fileUrl: string
-  fileType: string
-  fileName: string
-}
-
-export interface IMessage extends Document {
-  sessionId: Types.ObjectId
-  senderType: 'visitor' | 'operator' | 'system'
-  senderId: string
-  senderName?: string
-  messageText: string
-  attachments: IAttachment[]
-  isRead: boolean
-  createdAt: Date
-  updatedAt: Date
-}
+import type { IMessage } from '../types/message.types.js'
 
 const MessageSchema = new Schema<IMessage>(
   {
@@ -29,24 +11,37 @@ const MessageSchema = new Schema<IMessage>(
       required: true,
       index: true,
     },
+
     senderType: {
       type: String,
-      enum: ['visitor', 'operator', 'system'],
+      enum: ['visitor', 'operator', 'ai', 'system'],
       required: true,
     },
-    senderId: {
+
+    senderId: { type: String, required: true },
+
+    messageText: { type: String, required: true },
+
+    messageType: {
       type: String,
-      required: true,
+      enum: ['text', 'image', 'file', 'system', 'ai_suggestion'],
+      default: 'text',
     },
-    senderName: {
+
+    status: {
       type: String,
-      required: false,
+      enum: ['sent', 'delivered', 'seen', 'failed'],
+      default: 'sent',
     },
-    messageText: {
-      type: String,
-      required: true,
-      trim: true,
+
+    isFromAI: { type: Boolean, default: false },
+
+    aiMetadata: {
+      model: String,
+      confidence: Number,
+      intent: String,
     },
+
     attachments: [
       {
         fileUrl: String,
@@ -54,15 +49,19 @@ const MessageSchema = new Schema<IMessage>(
         fileName: String,
       },
     ],
-    isRead: {
-      type: Boolean,
-      default: false,
-    },
+
+    readBy: [
+      {
+        operatorId: String,
+        readAt: Date,
+      },
+    ],
+
+    editedAt: Date,
   },
   { timestamps: true },
 )
 
-// High-speed index to pull history packages sequentially
 MessageSchema.index({ sessionId: 1, createdAt: 1 })
 
 export default model<IMessage>('Message', MessageSchema)

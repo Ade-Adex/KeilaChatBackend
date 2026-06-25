@@ -1,356 +1,248 @@
-import type { Request, Response, NextFunction } from 'express'
-import { catchAsync } from '../config/errorHandler.js'
-import { AppError } from '../services/appError.js'
-import Account from '../models/Account.js'
-import Property from '../models/Property.js'
-import Operator from '../models/Operator.js' // 👈 Added
-import * as AuthUtils from '../utils/auth.utils.js'
-import { sendWelcomeEmail } from '../lib/email.js'
-import { normalizeDomain } from '../utils/domain.utils.js'
-import { ENV } from '../config/env.js'
+// /src/controllers/auth.controller.ts
 
-// const COOKIE_OPTIONS = {
-//   httpOnly: true,
-//   secure: ENV.NODE_ENV === 'production',
-//   sameSite: 'lax' as const,
-//   maxAge: 30 * 24 * 60 * 60 * 1000, // 30 Days
-// }
+import type { Request, Response } from 'express'
+import { AuthService } from '../services/auth.service.js'
+import { generateTokenPair } from '../utils/auth/tokens.js'
+import { verifyJwt } from '../utils/auth/jwt.js'
+import { SessionService } from '../services/session.service.js'
+import Operator from '../models/Operator.js'
 
+/**
+ * HELPER: set auth cookies
+ */
+function setAuthCookies(res: Response, tokens: any, rememberMe = false) {
+  res.cookie('access_token', tokens.accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 15 * 60 * 1000,
+  })
 
-// On your backend config/controller file
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: true, // MUST be true for sameSite: 'none' to work
-  sameSite: 'none' as const, // Allows cross-origin cookie storage
-  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 Days
+  res.cookie('refresh_token', tokens.refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000,
+  })
 }
 
 /**
- * @route   POST /api/v1/auth/register
- * @desc    Onboard a new tenant account and login immediately (Low friction experience)
- * @access  Public
+ * REGISTER TENANT (Account owner)
  */
-export const registerTenant = catchAsync(
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { companyName, ownerEmail, password, propertyName, propertyDomain } =
-      req.body
+export const registerTenant = async (req: Request, res: Response) => {
+  const { name, email, password } = req.body
 
-    if (
-      !companyName ||
-      !ownerEmail ||
-      !password ||
-      !propertyName ||
-      !propertyDomain
-    ) {
-      return next(
-        new AppError('All onboarding registration fields are required.', 400),
-      )
-    }
+  const result = await AuthService.registerTenant({
+    name,
+    email,
+    password,
+  })
 
-    // FIX 2: Validate the domain format UP FRONT before hitting the DB to avoid orphaned data
-    const normalizedDomain = normalizeDomain(propertyDomain)
-    if (!normalizedDomain) {
-      return next(
-        new AppError('Invalid domain format. Please provide a valid URL.', 400),
-      )
-    }
+  // 🔐 SET COOKIES HERE
+  setAuthCookies(res, result.tokens)
 
-    const existingAccount = await Account.findOne({
-      ownerEmail: ownerEmail.toLowerCase().trim(),
-    })
-    if (existingAccount) {
-      return next(
-        new AppError('An account with this email address already exists.', 409),
-      )
-    }
-
-    // 1. Create Tenant Account Frame
-    const passwordHash = await AuthUtils.hashPassword(password)
-    const newAccount = await Account.create({
-      name: companyName,
-      ownerEmail: ownerEmail.toLowerCase().trim(),
-      passwordHash,
-      plan: 'free',
-    })
-
-    // FIX 1: Provision the primary Administrator inside your Operator collection
-    await Operator.create({
-      accountId: newAccount._id,
-      email: newAccount.ownerEmail,
-      passwordHash,
-      role: 'admin',
-      status: 'active',
-      assignedProperties: [],
-      isOnline: false,
-    })
-
-    // 2. Create Default Workspace Property
-    const { widgetId, apiKey } = AuthUtils.generatePropertyCredentials()
-    const dashboardLink = ENV.BASE_URL || ''
-
-    const newProperty = await Property.create({
-      accountId: newAccount._id,
-      name: propertyName,
-      domain: normalizedDomain,
-      widgetId,
-      apiKey,
-      details: {
-        category: 'General',
-        subCategory: '',
-        region: 'Global',
-        description: '',
-        propertyImageUrl: '',
-      },
-      settings: {
-        themeColor: '#0070f3',
-        headingText: 'Chat with us!',
-        onlineStatus: true,
-        trackIp: true,
-      },
-    })
-
-    // 3. Authorization Session Emission
-    const token = AuthUtils.generateSecureToken({
-      accountId: newAccount._id.toString(),
-      email: newAccount.ownerEmail,
-      role: 'admin',
-    })
-
-    res.cookie('auth_token', token, COOKIE_OPTIONS)
-
-    sendWelcomeEmail(newAccount.ownerEmail, companyName, dashboardLink).catch(
-      (err) => console.error('Registration email failed:', err),
-    )
-
-    res.status(201).json({
-      status: 'success',
-      token,
-      data: {
-        account: {
-          id: newAccount._id,
-          name: newAccount.name,
-          plan: newAccount.plan,
-        },
-        property: {
-          id: newProperty._id,
-          name: newProperty.name,
-          domain: newProperty.domain,
-          widgetId: newProperty.widgetId,
-          settings: newProperty.settings,
-          details: newProperty.details,
-        },
-      },
-    })
-  },
-)
+  return res.status(201).json({
+    success: true,
+    data: {
+      account: result.account,
+      operator: result.operator,
+    },
+  })
+}
 
 /**
- * @route   POST /api/v1/auth/register-operator
- * @desc    Accept token verification, attach password data, and authorize session instantly
- * @access  Public
+ * LOGIN OPERATOR
  */
-export const registerInvitedOperator = catchAsync(
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { email, password, token } = req.body
+export const loginOperator = async (req: Request, res: Response) => {
+  const { email, password, rememberMe = false } = req.body
 
-    if (!email || !password || !token) {
-      return next(
-        new AppError('Missing required registration credentials.', 400),
-      )
-    }
+  const result = await AuthService.loginOperator({
+    email,
+    password,
+    rememberMe,
+  })
 
-    const operator = await Operator.findOne({
-      email: email.toLowerCase().trim(),
-      inviteToken: token,
-      status: 'invited',
-    })
+  const { operator, account, tokens } = result
 
-    if (!operator) {
-      return next(
-        new AppError(
-          'Invalid token pattern or invite registration correlation match failed.',
-          404,
-        ),
-      )
-    }
+  const decoded = verifyJwt(tokens.refreshToken)
 
-    // 1. Hydrate security credentials and upgrade record status
-    operator.passwordHash = await AuthUtils.hashPassword(password)
-    operator.status = 'active'
-
-    // FIX 3: Safe removal method compatible with exactOptionalPropertyTypes: true
-    operator.set('inviteToken', undefined)
-
-    await operator.save()
-
-    // 2. Fetch tenant layout context states for your Zustand engine pipeline
-    const account = await Account.findById(operator.accountId)
-    if (!account) {
-      return next(
-        new AppError(
-          'Associated multi-tenant workspace platform layer missing.',
-          404,
-        ),
-      )
-    }
-
-    const property = await Property.findOne({ accountId: account._id })
-
-    // 3. Issue persistent session state cookies
-    const sessionToken = AuthUtils.generateSecureToken({
+  if (decoded.type === 'refresh') {
+    await SessionService.storeSession(decoded.jti!, {
+      userId: operator._id.toString(),
       accountId: account._id.toString(),
-      email: operator.email,
       role: operator.role,
     })
+  }
 
-    res.cookie('auth_token', sessionToken, COOKIE_OPTIONS)
+  setAuthCookies(res, tokens, rememberMe)
 
-    res.status(200).json({
-      status: 'success',
-      token: sessionToken,
-      data: {
-        account: {
-          id: account._id,
-          name: account.name,
-          plan: account.plan,
-        },
-        property: property
-          ? {
-              id: property._id,
-              name: property.name,
-              domain: property.domain,
-              widgetId: property.widgetId,
-              settings: property.settings,
-              details: property.details,
-            }
-          : null,
-      },
-    })
-  },
-)
+  return res.status(200).json({
+    success: true,
+    data: {
+      account,
+      operator,
+    },
+  })
+}
 
 /**
- * @route   POST /api/v1/auth/login
- * @desc    Authenticate operator (Admin or Agent) and return system session payload
- * @access  Public
+ * FORGOT PASSWORD
  */
-export const loginOperator = catchAsync(
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { email, password } = req.body
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body
 
-    if (!email || !password) {
-      return next(new AppError('Please provide both email and password.', 400))
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required',
+      })
     }
 
-    // 1. Locate the individual operator profile instead of the high-level tenant account
-    const operator = await Operator.findOne({ email }).select('+passwordHash')
-    if (!operator) {
-      return next(
-        new AppError('No operator profile found with this email.', 401),
-      )
-    }
+    const origin = req.headers.origin || `${req.protocol}://${req.get('host')}`
 
-    // 🚀 FIX: Type guard verification to confirm passwordHash exists
-    if (!operator.passwordHash) {
-      return next(
-        new AppError(
-          'Account credentials are not fully configured. Please complete your registration via the setup link.',
-          400,
-        ),
-      )
-    }
+    await AuthService.forgotPassword(email, origin)
 
-    // 2. Check if the individual operator has completed their signup registration/onboarding
-    if (operator.status !== 'active') {
-      return next(
-        new AppError(
-          'Your invitation is pending. Please complete registration via your email setup link.',
-          403,
-        ),
-      )
-    }
-
-    // 3. Verify the credentials against the operator's password hash
-    // TypeScript is happy now because operator.passwordHash is guaranteed to be a string here!
-    const isPasswordCorrect = await AuthUtils.verifyPassword(
-      password,
-      operator.passwordHash,
-    )
-
-    // 4. Extract parent tenant workspace context mapping
-    const account = await Account.findById(operator.accountId)
-    if (!account) {
-      return next(
-        new AppError('The associated workspace profile no longer exists.', 404),
-      )
-    }
-
-    if (!account.isActive) {
-      return next(
-        new AppError(
-          'This workspace ecosystem is currently suspended. Please contact your administrator.',
-          403,
-        ),
-      )
-    }
-
-    // 5. Query for property settings tied to this workspace layout context
-    const property = await Property.findOne({ accountId: account._id })
-
-    // 6. Generate state token containing precise, individual authorization rules (e.g. role: admin | agent)
-    const token = AuthUtils.generateSecureToken({
-      operatorId: operator._id.toString(),
-      accountId: account._id.toString(),
-      email: operator.email,
-      role: operator.role, // 'admin' or 'agent'
+    return res.status(200).json({
+      success: true,
+      message:
+        'If an account exists with that email, a password reset link has been sent.',
     })
-
-    // Set secure cookie for proxy tracking
-    res.cookie('auth_token', token, COOKIE_OPTIONS)
-
-    // 7. Standardized data payload output matches the exact structure required by your Zustand useAuthStore!
-    res.status(200).json({
-      status: 'success',
-      token,
-      data: {
-        account: {
-          id: account._id,
-          accountId: account._id, // included both variants to safely satisfy frontend model parsing structures
-          name: account.name,
-          ownerEmail: operator.email, // satisfies useAuthStore session assignment mapping rules
-          plan: account.plan,
-        },
-        property: property
-          ? {
-              id: property._id,
-              name: property.name,
-              domain: property.domain,
-              widgetId: property.widgetId,
-              settings: property.settings,
-              details: property.details,
-            }
-          : null,
-      },
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Failed to process password reset request',
     })
-  },
-)
+  }
+}
 
 /**
- * @route   POST /api/v1/auth/logout
- * @desc    Clear the application authorization token cookie
- * @access  Public
+ * RESET PASSWORD
  */
-export const logoutOperator = catchAsync(
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    res.clearCookie('auth_token', {
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { token, password } = req.body
+
+    if (!token || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token and password are required',
+      })
+    }
+
+    await AuthService.resetPassword(token, password)
+
+    return res.status(200).json({
+      success: true,
+      message: 'Password reset successfully.',
+    })
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error ? error.message : 'Unable to reset password',
+    })
+  }
+}
+
+
+/**
+ * REFRESH TOKEN (ROTATION SYSTEM)
+ */
+export const refreshToken = async (req: Request, res: Response) => {
+  const refreshToken = req.cookies?.refresh_token
+
+  if (!refreshToken) {
+    return res.status(401).json({
+      message: 'Refresh token missing',
+    })
+  }
+
+  const decoded = verifyJwt(refreshToken)
+
+  if (decoded.type !== 'refresh' || !decoded.userId) {
+    return res.status(403).json({ message: 'Invalid refresh token' })
+  }
+
+  const session = await SessionService.getSession(decoded.jti!)
+
+  if (!session) {
+    return res.status(403).json({ message: 'Session expired or invalid' })
+  }
+
+  const operator = await Operator.findById(decoded.userId)
+
+  if (!operator) {
+    return res.status(404).json({ message: 'User not found' })
+  }
+
+  const newTokens = generateTokenPair({
+    userId: operator._id.toString(),
+    accountId: operator.accountId.toString(),
+    role: operator.role,
+  })
+
+  await SessionService.deleteSession(decoded.jti!)
+
+  const newDecoded = verifyJwt(newTokens.refreshToken)
+
+  if (newDecoded.type === 'refresh') {
+    await SessionService.storeSession(newDecoded.jti!, {
+      userId: operator._id.toString(),
+      accountId: operator.accountId.toString(),
+      role: operator.role,
+    })
+  }
+
+  // 🔐 UPDATE COOKIES
+  setAuthCookies(res, newTokens)
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      message: 'Token refreshed',
+    },
+  })
+}
+
+/**
+ * LOGOUT
+ */
+export const logoutOperator = async (req: Request, res: Response) => {
+  try {
+    const refreshToken = req.cookies?.refresh_token
+
+    if (refreshToken) {
+      const decoded = verifyJwt(refreshToken)
+
+      if (decoded.type === 'refresh' && decoded.jti) {
+        await SessionService.deleteSession(decoded.jti)
+      }
+    }
+
+    res.clearCookie('access_token', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
     })
 
-    res.status(200).json({
-      status: 'success',
-      message: 'Logged out successfully from backend server boundary.',
+    res.clearCookie('refresh_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
+    })
+  } catch {
+    return res.status(200).json({
+      success: true,
+      message: 'Logged out successfully',
     })
   }
-)
+}

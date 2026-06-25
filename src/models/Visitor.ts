@@ -1,25 +1,7 @@
 // /src/models/Visitor.ts
 
 import { Schema, model } from 'mongoose'
-import type { Document, Types } from 'mongoose'
-
-export interface IVisitor extends Document {
-  propertyId: Types.ObjectId
-  visitorTrackingId: string
-  name: string
-  email: string | null
-  metadata: {
-    ipAddress?: string
-    userAgent?: string
-    location?: {
-      country?: string
-      city?: string
-    }
-  }
-  lastSeen: Date
-  createdAt: Date
-  updatedAt: Date
-}
+import type { IVisitor } from '../types/visitor.types.js'
 
 const VisitorSchema = new Schema<IVisitor>(
   {
@@ -29,21 +11,14 @@ const VisitorSchema = new Schema<IVisitor>(
       required: true,
       index: true,
     },
-    visitorTrackingId: {
-      type: String,
-      required: true,
-      index: true,
-    },
-    name: {
-      type: String,
-      default: 'Anonymous Visitor',
-    },
-    email: {
-      type: String,
-      lowercase: true,
-      trim: true,
-      default: null,
-    },
+
+    visitorTrackingId: { type: String, required: true },
+
+    name: { type: String, default: 'Anonymous Visitor' },
+    email: { type: String, default: null },
+
+    sessionId: String,
+
     metadata: {
       ipAddress: String,
       userAgent: String,
@@ -51,16 +26,24 @@ const VisitorSchema = new Schema<IVisitor>(
         country: String,
         city: String,
       },
+      deviceType: {
+        type: String,
+        enum: ['mobile', 'desktop', 'tablet'],
+      },
     },
-    lastSeen: {
-      type: Date,
-      default: Date.now,
-    },
+
+    currentPage: String,
+    referrer: String,
+
+    isOnline: { type: Boolean, default: false },
+    lastSeen: { type: Date, default: Date.now },
+
+    pageViews: { type: Number, default: 0 },
+    chatOpened: { type: Boolean, default: false },
   },
   { timestamps: true },
 )
 
-// Indexing compound keys to eliminate duplicate tracking models per layout instances
 VisitorSchema.index({ propertyId: 1, visitorTrackingId: 1 }, { unique: true })
 
 export default model<IVisitor>('Visitor', VisitorSchema)

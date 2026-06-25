@@ -1,10 +1,10 @@
-
 // /src/controllers/session.controller.ts
 
-
 import type { Request, Response, NextFunction } from 'express'
+
 import { catchAsync } from '../config/errorHandler.js'
 import { AppError } from '../services/appError.js'
+
 import ChatSession from '../models/ChatSession.js'
 import Property from '../models/Property.js'
 import Visitor from '../models/Visitor.js'
@@ -12,9 +12,10 @@ import Message from '../models/Message.js'
 import { Types } from 'mongoose'
 
 /**
- * @route   POST /api/v1/sessions/initiate
- * @desc    Fetch active session or initialize a brand new conversation thread for a visitor
- * @access  Public (Widget Client-Side)
+ * ----------------------------------------------------------------
+ * POST /api/v1/sessions/initiate
+ * Public (Widget)
+ * ----------------------------------------------------------------
  */
 export const initiateSession = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -24,64 +25,109 @@ export const initiateSession = catchAsync(
       return next(new AppError('Required identifiers missing.', 400))
     }
 
-    // Lookup property by widgetId (UUID)
-    const property = await Property.findOne({ widgetId }).lean()
+    /**
+     * Find Property
+     */
+    const property = await Property.findOne({ widgetId })
+
     if (!property) {
       return next(new AppError('Invalid widget configuration.', 404))
     }
 
-    const propertyId = property._id
-
-    // 2. Find or Create the Visitor
-    let visitor = await Visitor.findOneAndUpdate(
-      { visitorTrackingId: visitorId, propertyId },
-      {
-        $setOnInsert: {
-          name: 'Anonymous Visitor',
-          lastSeen: new Date(),
-        },
+    /**
+     * Find or Create Visitor
+     */
+  const visitor = await Visitor.findOneAndUpdate(
+    {
+      propertyId: property._id,
+      visitorTrackingId: visitorId,
+    },
+    {
+      $set: {
+        lastSeen: new Date(),
+        isOnline: true,
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    )
+      $setOnInsert: {
+        name: 'Anonymous Visitor',
+        chatOpened: true,
+      },
+    },
+    {
+      upsert: true,
+      returnDocument: 'after',
+      setDefaultsOnInsert: true,
+    },
+  )
 
-    // 3. Look for an existing unresolved session for this visitor isolated strictly to this property
+    /**
+     * Find existing active session
+     */
     let session = await ChatSession.findOne({
-      propertyId,
+      propertyId: property._id,
       visitorId: visitor._id,
-      status: { $in: ['unassigned', 'active'] },
+      status: {
+        $in: ['waiting', 'active'],
+      },
     })
 
     let isNewSession = false
 
-    // 4. If no active thread exists, initialize a new one
+    /**
+     * Create new session if none exists
+     */
     if (!session) {
       session = await ChatSession.create({
-        propertyId,
+        propertyId: property._id,
         visitorId: visitor._id,
-        status: 'unassigned',
+
+        status: 'waiting',
+
         assignedOperatorId: null,
+
+        aiEnabled: property.settings.aiEnabled,
+
+        startedAt: new Date(),
       })
+
       isNewSession = true
 
-      // Create initial System Message acknowledging connection entry
+      /**
+       * Initial system message
+       */
       await Message.create({
         sessionId: session._id,
+
         senderType: 'system',
         senderId: 'system',
+
         messageText:
           'Conversation started. Waiting for an operator to connect...',
-        createdAt: new Date(),
+
+        messageType: 'system',
+
+        status: 'sent',
+
+        isFromAI: false,
+
+        attachments: [],
+
+        readBy: [],
       })
     }
 
     res.status(isNewSession ? 201 : 200).json({
-      status: 'success',
+      success: true,
+
       data: {
         session: {
           _id: session._id,
           propertyId: session.propertyId,
           visitorId: session.visitorId,
+          assignedOperatorId: session.assignedOperatorId,
           status: session.status,
+          aiEnabled: session.aiEnabled,
+          startedAt: session.startedAt,
+          createdAt: session.createdAt,
         },
       },
     })
@@ -89,71 +135,103 @@ export const initiateSession = catchAsync(
 )
 
 /**
- * @route   GET /api/v1/sessions/property/:propertyId
- * @desc    Retrieve all conversation tracks belonging to a given property for the agent panel
- * @access  Private
+ * ----------------------------------------------------------------
+ * GET /api/v1/sessions/property/:propertyId
+ * Private
+ * ----------------------------------------------------------------
  */
 export const getPropertySessions = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const { propertyId } = req.params
 
     if (!propertyId) {
-      return next(new AppError('Property tracking ID param is required.', 400))
+      return next(new AppError('Property ID is required.', 400))
     }
 
-    // Fetch conversations completely isolated to this property ID ecosystem matrix container
-    const sessions = await ChatSession.find({ propertyId })
-      .populate('visitorId', 'name email lastSeen')
-      .populate('assignedOperatorId', 'firstName lastName email')
-      .sort({ updatedAt: -1 })
+    const sessions = await ChatSession.find({
+      propertyId,
+    })
+      .populate('visitorId', 'name email lastSeen isOnline')
+      .populate('assignedOperatorId', 'firstName lastName email isOnline')
+      .sort({
+        updatedAt: -1,
+      })
 
     res.status(200).json({
-      status: 'success',
+      success: true,
+
       results: sessions.length,
-      data: { sessions },
+
+      data: {
+        sessions,
+      },
     })
   },
 )
 
+/**
+ * ----------------------------------------------------------------
+ * PATCH /api/v1/sessions/:sessionId/end
+ * ----------------------------------------------------------------
+ */
 export const endSession = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const rawSessionId = req.params.sessionId
+    const endedBy = req.body?.endedBy
+
+    if (!rawSessionId) {
+      return next(new AppError('Session ID is required.', 400))
+    }
+
+    // normalize sessionId (fix string | string[])
     const sessionId = Array.isArray(rawSessionId)
       ? rawSessionId[0]
       : rawSessionId
-    const { endedBy } = req.body
-
-    if (!sessionId) {
-      return next(new AppError('Session ID is required', 400))
-    }
 
     const session = await ChatSession.findById(sessionId)
-    if (!session) return next(new AppError('Session not found', 404))
 
+    if (!session) {
+      return next(new AppError('Session not found.', 404))
+    }
+
+    // close session
     session.status = 'closed'
     session.endedAt = new Date()
     await session.save()
 
-    const messageText =
-      endedBy === 'admin'
-        ? 'This chat session has been closed by the support team.'
-        : 'This chat session has been closed by the visitor.'
-
+    // create system message (NO need for new ObjectId conversion)
     const systemMessage = await Message.create({
-      sessionId: new Types.ObjectId(sessionId),
+      sessionId: session._id, // ✅ FIX: use ObjectId directly from mongoose doc
+
       senderType: 'system',
       senderId: 'system',
-      messageText,
-      createdAt: new Date(),
+
+      messageText:
+        endedBy === 'admin'
+          ? 'This chat session has been closed by the support team.'
+          : 'This chat session has been closed by the visitor.',
+
+      messageType: 'system',
+      status: 'sent',
+      isFromAI: false,
+
+      attachments: [],
+      readBy: [],
     })
 
+    // socket emit
     const io = req.app.get('socketService').getIO()
-    const roomName = `session:${sessionId}`
 
-    // Notify all active interfaces within the target isolation channel
-    io.to(roomName).emit('new_message', systemMessage)
-    io.to(roomName).emit('session_closed', { sessionId, endedBy })
+    io.to(`session:${sessionId}`).emit('new_message', systemMessage)
 
-    res.status(200).json({ status: 'success', message: 'Session closed' })
+    io.to(`session:${sessionId}`).emit('session_closed', {
+      sessionId,
+      endedBy,
+    })
+
+   res.status(200).json({
+     success: true,
+     message: 'Session closed successfully.',
+   })
   },
 )

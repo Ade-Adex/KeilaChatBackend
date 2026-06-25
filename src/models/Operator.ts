@@ -1,24 +1,7 @@
 // /src/models/Operator.ts
 
 import { Schema, model } from 'mongoose'
-import type { Document, Types } from 'mongoose'
-
-// /src/models/Operator.ts
-
-export interface IOperator extends Document {
-  accountId: Types.ObjectId
-  firstName?: string | undefined  
-  lastName?: string | undefined   
-  email: string
-  passwordHash?: string | undefined 
-  role: 'admin' | 'agent'
-  status: 'invited' | 'active' 
-  inviteToken?: string | undefined 
-  assignedProperties: Types.ObjectId[]
-  isOnline: boolean
-  createdAt: Date
-  updatedAt: Date
-}
+import type { IOperator } from '../types/operator.types.js'
 
 const OperatorSchema = new Schema<IOperator>(
   {
@@ -28,55 +11,100 @@ const OperatorSchema = new Schema<IOperator>(
       required: true,
       index: true,
     },
-    firstName: {
-      type: String,
-      required: false, 
-      trim: true,
-    },
-    lastName: {
-      type: String,
-      required: false, 
-      trim: true,
-    },
+
+    firstName: String,
+
+    lastName: String,
+
     email: {
       type: String,
       required: true,
       lowercase: true,
       trim: true,
     },
-    passwordHash: {
+
+    passwordHash: String,
+
+    avatar: {
       type: String,
-      required: false, 
+      default: '',
     },
+
     role: {
       type: String,
-      enum: ['admin', 'agent'],
+      enum: ['admin', 'supervisor', 'agent'],
       default: 'agent',
     },
+
     status: {
       type: String,
-      enum: ['invited', 'active'],
-      default: 'invited', 
+      enum: ['invited', 'active', 'suspended'],
+      default: 'invited',
     },
-    inviteToken: {
+
+    inviteToken: String,
+
+    resetPasswordToken: {
       type: String,
-      required: false,
+      default: null,
     },
+
+    resetPasswordExpires: {
+      type: Date,
+      default: null,
+    },
+
     assignedProperties: [
       {
         type: Schema.Types.ObjectId,
         ref: 'Property',
       },
     ],
+
+    socketId: String,
+
     isOnline: {
       type: Boolean,
       default: false,
     },
+
+    lastSeen: Date,
+
+    availabilityStatus: {
+      type: String,
+      enum: ['online', 'away', 'busy', 'offline'],
+      default: 'offline',
+    },
+
+    activeChatsCount: {
+      type: Number,
+      default: 0,
+    },
+
+    maxConcurrentChats: {
+      type: Number,
+      default: 5,
+    },
+
+    permissions: [
+      {
+        type: String,
+      },
+    ],
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 )
 
-// Enforce unique agent logins within a tenant account ecosystem
-OperatorSchema.index({ accountId: 1, email: 1 }, { unique: true })
+OperatorSchema.index(
+  {
+    accountId: 1,
+    email: 1,
+  },
+  {
+    unique: true,
+  },
+)
 
 export default model<IOperator>('Operator', OperatorSchema)

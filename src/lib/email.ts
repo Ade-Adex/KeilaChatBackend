@@ -4,7 +4,11 @@ import { ENV } from '../config/env.js'
 
 const resend = new Resend(ENV.RESEND.API_KEY)
 
-export const sendWelcomeEmail = async (email: string, name: string, dashboardLink: string) => {
+export const sendWelcomeEmail = async (
+  email: string,
+  name: string,
+  dashboardLink: string,
+) => {
   // Configured with clean routing back to your primary app domain
 
   try {
@@ -87,14 +91,14 @@ export const sendOperatorInvitationEmail = async (
   const cleanDomain = originDomain.startsWith('http')
     ? originDomain
     : `https://${originDomain}`
-  const invitationLink = `${cleanDomain}/admin/dashboard/accept-invite?token=${inviteToken}`
+  const invitationLink = `${cleanDomain}/accept-invite?token=${inviteToken}`
 
   try {
     await resend.emails.send({
       from: `Christ Baptist Church <${ENV.RESEND.MAIL_USER}>`,
       to: [email],
       replyTo: ENV.RESEND.MAIL_USER,
-      subject: `Invitation to join ${companyName} as a Team Operator (${role})`,
+      subject: `${companyName} invited you to join their workspace`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 30px 20px; color: #171717; background-color: #fdfdfd; max-width: 600px; margin: 0 auto;">
           <div style="background-color: #ffffff; border: 1px solid #ededed; border-radius: 8px; padding: 40px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);">
@@ -107,7 +111,7 @@ export const sendOperatorInvitationEmail = async (
 
             <h2 style="color: #0a0a0a; font-size: 22px; font-weight: 700; margin-top: 0; margin-bottom: 16px;">You've Been Invited!</h2>
             <p style="font-size: 15px; line-height: 1.6; color: #404040;">
-              You have been invited to join the official <strong>${companyName}</strong> ecosystem setup as a workspace <strong>${role}</strong>.
+             You have been invited to join <strong>${companyName}</strong> as a <strong>${role}</strong> operator.
             </p>
             
             <div style="margin: 30px 0; padding: 20px; background-color: #fafafa; border-radius: 6px; border: 1px solid #f0f0f0;">
@@ -141,5 +145,88 @@ export const sendOperatorInvitationEmail = async (
     })
   } catch (error) {
     console.error('Failed to dispatch operator invitation email:', error)
+  }
+}
+
+export const sendPasswordResetEmail = async (
+  email: string,
+  resetLink: string,
+) => {
+  try {
+    await resend.emails.send({
+      from: `Christ Baptist Church <${ENV.RESEND.MAIL_USER}>`,
+      to: [email],
+      replyTo: ENV.RESEND.MAIL_USER,
+      subject: 'Reset your password',
+      html: `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:30px 20px;background:#f8fafc;color:#171717;max-width:600px;margin:0 auto;">
+
+          <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:40px;">
+
+            <div style="margin-bottom:24px;border-bottom:1px solid #e5e7eb;padding-bottom:20px;">
+              <span style="font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;">
+                Password Reset
+              </span>
+            </div>
+
+            <h2 style="margin-top:0;font-size:26px;color:#111827;">
+              Reset Your Password
+            </h2>
+
+            <p style="font-size:15px;line-height:1.7;color:#4b5563;">
+              We received a request to reset your account password.
+              If you made this request, click the button below to create a new password.
+            </p>
+
+            <div style="text-align:center;margin:40px 0;">
+              <a
+                href="${resetLink}"
+                style="
+                  display:inline-block;
+                  background:#111827;
+                  color:#ffffff;
+                  text-decoration:none;
+                  padding:14px 28px;
+                  border-radius:6px;
+                  font-weight:600;
+                "
+              >
+                Reset Password
+              </a>
+            </div>
+
+            <p style="font-size:14px;color:#6b7280;line-height:1.7;">
+              This password reset link will expire in
+              <strong>30 minutes</strong>.
+            </p>
+
+            <p style="font-size:14px;color:#6b7280;line-height:1.7;">
+              If you did not request a password reset, you can safely ignore this email.
+              Your password will remain unchanged.
+            </p>
+
+            <hr style="border:none;border-top:1px solid #e5e7eb;margin:30px 0;" />
+
+            <p style="font-size:12px;color:#9ca3af;word-break:break-all;">
+              If the button above doesn't work, copy and paste this link into your browser:
+              <br /><br />
+              <a href="${resetLink}" style="color:#111827;">
+                ${resetLink}
+              </a>
+            </p>
+
+          </div>
+
+          <div style="text-align:center;margin-top:24px;">
+            <p style="font-size:11px;color:#9ca3af;">
+              © 2026 Christ Baptist Church. All rights reserved.
+            </p>
+          </div>
+
+        </div>
+      `,
+    })
+  } catch (error) {
+    console.error('Failed to send password reset email:', error)
   }
 }
