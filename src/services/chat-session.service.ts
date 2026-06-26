@@ -236,6 +236,13 @@ export async function initializeChat(
       }),
     },
   )
+
+  return {
+    sessionId: session._id.toString(),
+    propertyId: property._id.toString(),
+    visitorId: visitor._id.toString(),
+    status: session.status,
+  }
 }
 
 
@@ -395,9 +402,12 @@ export async function operatorLeaveChat(sessionId: string, operatorId: string) {
 
   await session.save()
 
-  await Operator.updateOne(
+  await Operator.findOneAndUpdate(
     {
       _id: operatorId,
+      activeChatsCount: {
+        $gt: 0,
+      },
     },
     {
       $inc: {
@@ -425,7 +435,7 @@ export async function transferChat(
 
   session.assignedOperatorId = new Types.ObjectId(toOperatorId)
   session.transferredTo = new Types.ObjectId(toOperatorId) 
-  session.status = 'transferred'
+  session.status = 'active'
 
   await session.save()
 

@@ -18,4 +18,11 @@ export class QueueService {
   static async getQueueLength(propertyId: string) {
     return await redisClient.llen(`queue:${propertyId}`)
   }
+
+  static async getPosition(propertyId: string, sessionId: string) {
+    const queue = await redisClient.lrange(`queue:${propertyId}`, 0, -1)
+
+    return queue.indexOf(sessionId) + 1
+  }
 }
+

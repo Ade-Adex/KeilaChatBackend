@@ -278,7 +278,7 @@ export function buildWidgetResponse(
     launcherPosition:
       property.widgetSettings?.launcherPosition ?? 'bottom-right',
 
-    launcherIcon: property.widgetSettings?.launcherIcon ?? null,
+    launcherIcon: property.widgetSettings?.launcherIcon ?? '',
 
     welcomeMessage:
       property.widgetSettings?.welcomeMessage ?? 'Hi 👋 How can we help?',
@@ -322,7 +322,7 @@ export function buildWidgetResponse(
 
         name: property.name,
 
-        logo: property.details?.logoUrl,
+        logo: property.details?.logoUrl ?? '',
 
         category: property.details?.category,
       },

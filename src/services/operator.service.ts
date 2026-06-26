@@ -151,6 +151,12 @@ export async function getAvailableOperators(accountId: string) {
     status: 'active',
 
     isOnline: true,
+
+    availabilityStatus: 'online',
+
+    $expr: {
+      $lt: ['$activeChatsCount', '$maxConcurrentChats'],
+    },
   })
     .select('-passwordHash -inviteToken')
     .sort({

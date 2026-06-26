@@ -61,9 +61,11 @@ export class AuthService {
 
       permissions: ['*'],
 
-      isOnline: false,
+      isOnline: true,
 
-      availabilityStatus: 'offline',
+      availabilityStatus: 'online',
+
+      lastSeen: new Date(),
 
       activeChatsCount: 0,
 

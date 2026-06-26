@@ -22,6 +22,10 @@ export class PresenceService {
     return status === 'true'
   }
 
+  static async getOperatorSocket(operatorId: string) {
+    return redisClient.get(`operator:socket:${operatorId}`)
+  }
+
   static async setVisitorActive(visitorId: string, sessionId: string) {
     await redisClient.set(`visitor:session:${visitorId}`, sessionId)
   }

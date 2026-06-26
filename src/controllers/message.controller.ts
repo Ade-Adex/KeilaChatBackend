@@ -12,6 +12,7 @@ import {
   markDelivered,
   markSeen,
 } from '../services/message.service.js'
+import { MessagePipeline } from '../services/messagePipeline.service.js'
 
 function getParam(value: string | string[] | undefined, name: string): string {
   if (!value || Array.isArray(value)) {
@@ -40,16 +41,15 @@ export const createMessage = catchAsync(
       return next(new AppError('Session ID is required', 400))
     }
 
-    const message = await sendMessage(
+    const message = await MessagePipeline.processMessage({
       sessionId,
+      propertyId: req.body.propertyId,
       senderType,
       senderId,
       messageText,
-      {
-        messageType,
-        isFromAI,
-      },
-    )
+      messageType,
+      isFromAI,
+    })
 
     res.status(201).json({
       status: 'success',

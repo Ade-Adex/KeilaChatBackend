@@ -175,7 +175,7 @@ export class SocketService {
             if (room.startsWith('session:')) {
               const sessionId = room.replace('session:', '')
 
-              await operatorLeft(sessionId, 'Operator')
+              // await operatorLeft(sessionId, 'Operator')
             }
           }
 

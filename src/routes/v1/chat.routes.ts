@@ -14,6 +14,10 @@ import {
   createInternalNote,
 } from '../../controllers/chat.controller.js'
 
+import { authMiddleware } from '../../middleware/auth.middleware.js'
+import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
+import { rbac } from '../../middleware/rbac.middleware.js'
+
 const router = Router()
 
 /* -------------------------------- */
@@ -21,6 +25,9 @@ const router = Router()
 /* -------------------------------- */
 
 router.post('/', createChat)
+
+router.use(authMiddleware)
+router.use(tenantMiddleware)
 
 router.patch('/:sessionId/close', endChat)
 
