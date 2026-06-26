@@ -274,7 +274,30 @@ export function buildWidgetResponse(
   onlineOperators: number,
   visitor: any,
 ) {
-  const isOnline = onlineOperators > 0 && property.settings.onlineStatus
+  const widgetSettings = {
+    launcherPosition:
+      property.widgetSettings?.launcherPosition ?? 'bottom-right',
+
+    launcherIcon: property.widgetSettings?.launcherIcon ?? null,
+
+    welcomeMessage:
+      property.widgetSettings?.welcomeMessage ?? 'Hi 👋 How can we help?',
+
+    offlineMessage:
+      property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
+
+    showAgentPhoto: property.widgetSettings?.showAgentPhoto ?? true,
+
+    soundEnabled: property.widgetSettings?.soundEnabled ?? true,
+
+    allowFileUpload: property.widgetSettings?.allowFileUpload ?? true,
+
+    allowEmoji: property.widgetSettings?.allowEmoji ?? true,
+
+    allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
+  }
+
+  const isOnline = onlineOperators > 0 && property.settings?.onlineStatus
 
   return {
     status: 'success',
@@ -289,9 +312,9 @@ export function buildWidgetResponse(
 
         initialized: true,
 
-        launcherPosition: property.widgetSettings.launcherPosition,
+        launcherPosition: widgetSettings.launcherPosition,
 
-        launcherIcon: property.widgetSettings.launcherIcon,
+        launcherIcon: widgetSettings.launcherIcon,
       },
 
       property: {
@@ -310,18 +333,18 @@ export function buildWidgetResponse(
         operators: onlineOperators,
 
         welcomeMessage: isOnline
-          ? property.widgetSettings.welcomeMessage
-          : property.widgetSettings.offlineMessage,
+          ? widgetSettings.welcomeMessage
+          : widgetSettings.offlineMessage,
 
-        allowFileUpload: property.widgetSettings.allowFileUpload,
+        allowFileUpload: widgetSettings.allowFileUpload,
 
-        allowEmoji: property.widgetSettings.allowEmoji,
+        allowEmoji: widgetSettings.allowEmoji,
 
-        allowScreenshots: property.widgetSettings.allowScreenshots,
+        allowScreenshots: widgetSettings.allowScreenshots,
 
-        soundEnabled: property.widgetSettings.soundEnabled,
+        soundEnabled: widgetSettings.soundEnabled,
 
-        showAgentPhoto: property.widgetSettings.showAgentPhoto,
+        showAgentPhoto: widgetSettings.showAgentPhoto,
       },
 
       visitor: visitor
