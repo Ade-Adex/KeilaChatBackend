@@ -29,26 +29,53 @@ export class AuthService {
     const account = await Account.create({
       name: data.name,
       ownerEmail: data.email,
+
       plan: 'free',
+
+      isActive: true,
+
       settings: {
         aiEnabled: true,
         maxOperators: 5,
         maxVisitors: 1000,
       },
-    })
 
+      usage: {
+        totalChats: 0,
+        totalVisitors: 0,
+        currentMonthMessages: 0,
+      },
+    })
     const passwordHash = await hashPassword(data.password)
 
     const owner = await Operator.create({
       accountId: account._id,
+
       email: data.email,
+
       passwordHash,
+
       role: 'admin',
+
       status: 'active',
-      isOnline: false,
-      activeChatsCount: 0,
-      maxConcurrentChats: 10,
+
       permissions: ['*'],
+
+      isOnline: false,
+
+      availabilityStatus: 'offline',
+
+      activeChatsCount: 0,
+
+      maxConcurrentChats: 10,
+
+      stats: {
+        chatsHandled: 0,
+        averageResponseTime: 0,
+        satisfactionScore: 0,
+      },
+
+      joinedAt: new Date(),
     })
 
     const tokens = generateTokenPair({
@@ -103,7 +130,6 @@ export class AuthService {
       },
       data.rememberMe,
     )
-    
 
     return {
       tokens,
@@ -190,10 +216,19 @@ export class AuthService {
   static async updateProfile(
     operatorId: string,
     data: {
+      // operator
       firstName?: string
       lastName?: string
       email?: string
       avatar?: string
+
+      // account
+      companyName?: string
+      companyWebsite?: string
+      companyPhone?: string
+      companyLogo?: string
+
+      // property
       propertyName?: string
       domain?: string
       allowedDomains?: string[]
@@ -203,6 +238,12 @@ export class AuthService {
 
     if (!operator) {
       throw new Error('Operator not found')
+    }
+
+    const account = await Account.findById(operator.accountId)
+
+    if (!account) {
+      throw new Error('Account not found')
     }
 
     if (data.firstName !== undefined) operator.firstName = data.firstName
@@ -216,6 +257,33 @@ export class AuthService {
 
     await operator.save()
 
+    if (data.companyName !== undefined) {
+      account.name = data.companyName
+    }
+
+    if (data.companyWebsite !== undefined) {
+      account.branding = {
+        ...account.branding,
+        companyWebsite: data.companyWebsite,
+      }
+    }
+
+    if (data.companyPhone !== undefined) {
+      account.branding = {
+        ...account.branding,
+        companyPhone: data.companyPhone,
+      }
+    }
+
+    if (data.companyLogo !== undefined) {
+      account.branding = {
+        ...account.branding,
+        companyLogo: data.companyLogo,
+      }
+    }
+
+    await account.save()
+
     let property = await Property.findOne({
       accountId: operator.accountId,
     })
@@ -225,21 +293,29 @@ export class AuthService {
     if (!property) {
       const credentials = generatePropertyCredentials()
 
-      property = await Property.create({
-        accountId: operator.accountId,
+    property = await Property.create({
+      accountId: operator.accountId,
 
-        name: data.propertyName || 'My Website',
+      name: data.propertyName ?? data.companyName ?? 'My Website',
 
-        domain: normalizedDomain ?? '',
+      domain: normalizedDomain ?? '',
 
-        allowedDomains:
-          (data.allowedDomains
-            ?.map((d) => normalizeDomain(d))
-            .filter(Boolean) as string[]) || [],
+      allowedDomains:
+        (data.allowedDomains
+          ?.map((d) => normalizeDomain(d))
+          .filter(Boolean) as string[]) || [],
 
-        widgetId: credentials.widgetId,
-        apiKey: credentials.apiKey,
-      })
+      widgetId: credentials.widgetId,
+
+      apiKey: credentials.apiKey,
+
+      details:
+        data.companyLogo !== undefined
+          ? {
+              logoUrl: data.companyLogo,
+            }
+          : {},
+    })
     } else {
       if (data.propertyName !== undefined) {
         property.name = data.propertyName
@@ -267,6 +343,7 @@ export class AuthService {
     )
 
     return {
+      account,
       operator,
       property,
     }
