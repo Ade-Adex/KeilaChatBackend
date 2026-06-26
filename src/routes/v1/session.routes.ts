@@ -11,30 +11,24 @@ import {
   queuedSessions,
   operatorSessions,
   propertySessions,
+  initiateSession,
 } from '../../controllers/session.controller.js'
 
 const router = Router()
 
+router.post('/initiate', initiateSession)
+
 router.use(authMiddleware)
 router.use(tenantMiddleware)
 
-/* -------------------------------- */
-/* Session Queries                  */
-/* -------------------------------- */
-
-// single session
-router.get('/:sessionId', getSession)
-
-// active sessions for property
 router.get('/active', activeSessions)
 
-// queued sessions for property
 router.get('/queued', queuedSessions)
 
-// sessions assigned to operator
 router.get('/operator/:operatorId', operatorSessions)
 
-// all property sessions
 router.get('/property/:propertyId', propertySessions)
+
+router.get('/:sessionId', getSession)
 
 export default router

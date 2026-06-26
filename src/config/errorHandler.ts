@@ -30,7 +30,6 @@ export const globalErrorHandler = (
       error: err,
     })
   } else {
-    // Production: Don't leak system logs or developer stacks to clients
     res.status(statusCode).json({
       status: 'error',
       message:

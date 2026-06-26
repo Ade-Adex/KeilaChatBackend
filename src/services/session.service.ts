@@ -1,6 +1,8 @@
 // /src/services/session.service.ts
 
 import ChatSession from '../models/ChatSession.js'
+import Property from '../models/Property.js'
+import Visitor from '../models/Visitor.js'
 
 import { AppError } from './appError.js'
 
@@ -69,14 +71,82 @@ export async function getOpenSessionCount(propertyId: string) {
   })
 }
 
-
-export async function getClosedSessionCount(
-  propertyId: string,
-) {
+export async function getClosedSessionCount(propertyId: string) {
   return ChatSession.countDocuments({
     propertyId,
     status: 'closed',
   })
 }
 
+export async function initiateVisitorSession({
+  widgetId,
+  visitorTrackingId,
+}: {
+  widgetId: string
+  visitorTrackingId: string
+}) {
+  /*
+   * Find property by widgetId
+   */
+  const property = await Property.findOne({
+    widgetId,
+  })
 
+  if (!property) {
+    throw new AppError('Invalid widget', 404)
+  }
+
+  /*
+   * Find visitor
+   */
+  const visitor = await Visitor.findOne({
+    propertyId: property._id,
+    visitorTrackingId,
+  })
+
+  if (!visitor) {
+    throw new AppError('Visitor not found', 404)
+  }
+
+  /*
+   * Existing active session
+   */
+  let session = await ChatSession.findOne({
+    propertyId: property._id,
+
+    visitorId: visitor._id,
+
+    status: {
+      $in: ['waiting', 'queued', 'active'],
+    },
+  })
+
+  /*
+   * Create new session
+   */
+  if (!session) {
+    session = await ChatSession.create({
+      propertyId: property._id,
+
+      visitorId: visitor._id,
+
+      status: 'waiting',
+
+      channel: 'widget',
+
+      visitorJoinedAt: new Date(),
+
+      lastActivityAt: new Date(),
+    })
+  }
+
+  return {
+    sessionId: session._id.toString(),
+
+    propertyId: session.propertyId.toString(),
+
+    visitorId: session.visitorId.toString(),
+
+    status: session.status,
+  }
+}

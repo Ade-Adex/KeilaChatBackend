@@ -11,6 +11,7 @@ import {
   getQueuedSessions,
   getOperatorSessions,
   getPropertySessions,
+  initiateVisitorSession,
 } from '../services/session.service.js'
 
 function getParam(value: string | string[] | undefined, name: string): string {
@@ -90,4 +91,22 @@ export const propertySessions = catchAsync(
   },
 )
 
+export const initiateSession = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const { widgetId, visitorTrackingId } = req.body
 
+    if (!widgetId || !visitorTrackingId) {
+      throw new AppError('widgetId and visitorTrackingId are required', 400)
+    }
+
+    const session = await initiateVisitorSession({
+      widgetId,
+      visitorTrackingId,
+    })
+
+    res.status(200).json({
+      status: 'success',
+      data: session,
+    })
+  },
+)

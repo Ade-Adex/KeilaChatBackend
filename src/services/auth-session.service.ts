@@ -1,4 +1,4 @@
-// /src/services/socket.service.ts
+// /src/services/auth-session.service.ts
 
 
 import redisClient from '../config/redis.js'

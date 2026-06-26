@@ -19,15 +19,20 @@ import type {
 } from '../types/socket.types.js'
 
 import logger from '../bootstrap/logger.js'
+import { ENV } from '../config/env.js'
 
 export class SocketService {
   private io: Server
 
   constructor(server: HttpServer) {
     this.io = new Server(server, {
+      // cors: {
+      //   origin: '*',
+      //   methods: ['GET', 'POST'],
+      //   credentials: true,
+      // },
       cors: {
-        origin: '*',
-        methods: ['GET', 'POST'],
+        origin: ENV.BASE_URL,
         credentials: true,
       },
     })

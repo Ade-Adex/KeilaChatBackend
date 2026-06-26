@@ -75,7 +75,42 @@ export async function findOrCreateSession(
     referrer?: string
   },
 ) {
-  const session = await ChatSession.create({
+  /*
+   * Try to find existing open session
+   */
+  let session = await ChatSession.findOne({
+    propertyId,
+    visitorId,
+    status: {
+      $in: ['queued', 'waiting', 'active'],
+    },
+  }).sort({
+    createdAt: -1,
+  })
+
+  /*
+   * Return existing session
+   */
+  if (session) {
+    session.lastActivityAt = new Date()
+
+    if (visitorContext?.currentPage) {
+      session.visitorContext.currentPage = visitorContext.currentPage
+    }
+
+    if (visitorContext?.referrer) {
+      session.visitorContext.referrer = visitorContext.referrer
+    }
+
+    await session.save()
+
+    return session
+  }
+
+  /*
+   * Create new session
+   */
+  session = await ChatSession.create({
     propertyId,
     visitorId,
 
@@ -98,7 +133,9 @@ export async function findOrCreateSession(
     },
 
     status: 'queued',
+
     priority: 'normal',
+
     channel: 'widget',
 
     aiEnabled: true,
@@ -124,7 +161,11 @@ export async function findOrCreateSession(
 
     internalNotes: [],
 
+    visitorJoinedAt: new Date(),
+
     startedAt: new Date(),
+
+    lastActivityAt: new Date(),
   })
 
   return session
