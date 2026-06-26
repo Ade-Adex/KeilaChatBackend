@@ -12,33 +12,37 @@ export const globalErrorHandler = (
   let statusCode = 500
   let message = 'Internal Server Error'
 
-  // Check if it is our custom operational error
   if (err instanceof AppError) {
     statusCode = err.statusCode
     message = err.message
   } else if (err instanceof Error) {
-    // This catches unexpected native Javascript/Node runtime exceptions
     message = err.message
   }
 
-  // Development vs Production response layout
-  if (process.env.NODE_ENV === 'development') {
-    res.status(statusCode).json({
-      status: 'error',
-      message,
-      stack: err instanceof Error ? err.stack : undefined,
-      error: err,
-    })
-  } else {
-    res.status(statusCode).json({
-      status: 'error',
-      message:
-        statusCode === 500 ? 'Something went wrong on our end.' : message,
-    })
-  }
+  // VERY IMPORTANT
+  console.error('\n========== API ERROR ==========')
+  console.error('URL:', req.originalUrl)
+  console.error('METHOD:', req.method)
+  console.error('BODY:', req.body)
+  console.error('PARAMS:', req.params)
+  console.error('QUERY:', req.query)
+  console.error('ERROR:', err)
+  console.error('===============================\n')
+
+  res.status(statusCode).json({
+    status: 'error',
+    message,
+    stack: err instanceof Error ? err.stack : undefined,
+    error:
+      err instanceof Error
+        ? {
+            name: err.name,
+            message: err.message,
+          }
+        : err,
+  })
 }
 
-// Async utility using clean type-only parameters to satisfy verbatimModuleSyntax
 export const catchAsync = (
   fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
 ) => {
