@@ -24,7 +24,17 @@ const MessageSchema = new Schema<IMessage>(
 
     messageType: {
       type: String,
-      enum: ['text', 'image', 'file', 'system', 'ai_suggestion'],
+      enum: [
+        'text',
+        'image',
+        'video',
+        'audio',
+        'file',
+        'system',
+        'event',
+        'note',
+        'ai_suggestion',
+      ],
       default: 'text',
     },
 
@@ -57,6 +67,24 @@ const MessageSchema = new Schema<IMessage>(
       },
     ],
 
+    replyTo: {
+      type: Schema.Types.ObjectId,
+
+      ref: 'Message',
+    },
+    reactions: [
+      {
+        emoji: String,
+        operatorId: String,
+      },
+    ],
+    deletedAt: Date,
+
+    deletedBy: String,
+
+    deliveredAt: Date,
+
+    seenAt: Date,
     editedAt: Date,
   },
   { timestamps: true },

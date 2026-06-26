@@ -2,6 +2,7 @@
 
 import Operator from '../models/Operator.js'
 import Account from '../models/Account.js'
+import ChatSession from '../models/ChatSession.js'
 
 import { AppError } from './appError.js'
 
@@ -110,3 +111,50 @@ export async function acceptOperatorInvite(
 
   return operator
 }
+
+export async function getOperatorSessions(operatorId: string) {
+  return ChatSession.find({
+    assignedOperatorId: operatorId,
+    status: {
+      $in: ['active', 'queued'],
+    },
+  })
+    .sort({
+      updatedAt: -1,
+    })
+    .lean()
+}
+
+export async function updateOperatorPresence(
+  operatorId: string,
+  status: 'online' | 'offline' | 'away',
+) {
+  const operator = await Operator.findById(operatorId)
+
+  if (!operator) {
+    throw new AppError('Operator not found', 404)
+  }
+
+  operator.isOnline = status === 'online'
+
+  operator.lastSeen = new Date()
+
+  await operator.save()
+
+  return operator
+}
+
+export async function getAvailableOperators(accountId: string) {
+  return Operator.find({
+    accountId,
+
+    status: 'active',
+
+    isOnline: true,
+  })
+    .select('-passwordHash -inviteToken')
+    .sort({
+      activeChatsCount: 1,
+    })
+}
+

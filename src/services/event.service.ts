@@ -1,5 +1,8 @@
 // /src/services/event.service.ts
 
+
+//  You'll use it for: operator joined, operator left, visitor typing, operator typing, chat ended, chat transferred, new message, notifications, read receipts, delivered receipts
+
 import { Server } from 'socket.io'
 
 export class EventService {

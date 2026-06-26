@@ -1,9 +1,9 @@
 // /src/types/common.types.ts
 
-export type ID = string
+import type { Types } from 'mongoose'
 
 export interface BaseEntity {
-  _id: ID
+  _id: Types.ObjectId
   createdAt: Date
   updatedAt: Date
 }

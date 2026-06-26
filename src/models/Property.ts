@@ -47,6 +47,61 @@ const PropertySchema = new Schema<IProperty>(
       timezone: String,
       schedule: Schema.Types.Mixed,
     },
+
+    widgetSettings: {
+      launcherPosition: {
+        type: String,
+        enum: ['bottom-right', 'bottom-left'],
+        default: 'bottom-right',
+      },
+
+      launcherIcon: String,
+
+      welcomeMessage: {
+        type: String,
+        default: 'Hi 👋 How can we help?',
+      },
+
+      offlineMessage: {
+        type: String,
+        default: 'Leave us a message.',
+      },
+
+      showAgentPhoto: {
+        type: Boolean,
+        default: true,
+      },
+
+      soundEnabled: {
+        type: Boolean,
+        default: true,
+      },
+
+      allowFileUpload: {
+        type: Boolean,
+        default: true,
+      },
+
+      allowEmoji: {
+        type: Boolean,
+        default: true,
+      },
+
+      allowScreenshots: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    installation: {
+      installedAt: Date,
+
+      lastVerified: Date,
+
+      verified: {
+        type: Boolean,
+        default: false,
+      },
+    },
   },
   { timestamps: true },
 )

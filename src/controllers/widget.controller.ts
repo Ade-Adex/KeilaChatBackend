@@ -41,7 +41,7 @@ export const initializeWidget = catchAsync(
 
 export const verifyWidget = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { widgetId } = req.body
+    const widgetId = String(req.params.widgetId)
 
     if (!widgetId) {
       return next(new AppError('Widget ID is required.', 400))
@@ -72,6 +72,62 @@ export const verifyWidget = catchAsync(
 
         apiVersion: 'v1',
       },
+    })
+  },
+)
+
+/* -------------------------------------------------------------------------- */
+/* Widget Status                                                              */
+/* -------------------------------------------------------------------------- */
+
+export const widgetStatus = catchAsync(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const widgetId = String(req.params.widgetId)
+
+    if (!widgetId) {
+      return next(new AppError('Widget ID is required.', 400))
+    }
+
+    const { property } = await verifyWidgetAccess(widgetId)
+
+    res.status(200).json({
+      status: 'success',
+
+      data: {
+        online: property.settings.onlineStatus,
+
+        widgetId: property.widgetId,
+
+        propertyName: property.name,
+
+        allowFileUpload: property.widgetSettings?.allowFileUpload,
+
+        allowEmoji: property.widgetSettings?.allowEmoji,
+
+        allowScreenshots: property.widgetSettings?.allowScreenshots,
+      },
+    })
+  },
+)
+
+/* -------------------------------------------------------------------------- */
+/* Widget Settings                                                            */
+/* -------------------------------------------------------------------------- */
+
+export const getWidgetSettings = catchAsync(
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const widgetId = String(req.params.widgetId)
+
+    if (!widgetId) {
+      return next(new AppError('Widget ID is required.', 400))
+    }
+
+    const { property } = await verifyWidgetAccess(widgetId)
+
+    res.status(200).json({
+      status: 'success',
+
+      data: property.widgetSettings ?? property.settings,
     })
   },
 )

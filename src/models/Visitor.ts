@@ -22,15 +22,38 @@ const VisitorSchema = new Schema<IVisitor>(
     metadata: {
       ipAddress: String,
       userAgent: String,
+
+      browser: String,
+      operatingSystem: String,
+      timezone: String,
+      language: String,
+      screenResolution: String,
+
       location: {
         country: String,
         city: String,
       },
+
       deviceType: {
         type: String,
         enum: ['mobile', 'desktop', 'tablet'],
       },
     },
+
+    tags: [String],
+    notes: String,
+    firstVisitAt: {
+      type: Date,
+      default: Date.now,
+    },
+    unreadMessages: {
+      type: Number,
+      default: 0,
+    },
+    
+    lastTypingAt: Date,
+
+    joinedAt: Date,
 
     currentPage: String,
     referrer: String,

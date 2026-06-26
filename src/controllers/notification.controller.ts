@@ -1,19 +1,18 @@
 // /src/controllers/notification.controller.ts
 
 import type { Request, Response } from 'express'
+
 import { NotificationService } from '../services/notification.service.js'
 
-/**
- * GET NOTIFICATIONS
- */
+/* -------------------------------- */
+/* Get Notifications                */
+/* -------------------------------- */
+
 export const getNotifications = async (req: Request, res: Response) => {
   const accountId = String(req.params.accountId)
-  const unread = String(req.query.unread)
 
   const notifications =
-    unread === 'true'
-      ? await NotificationService.getUnread(accountId)
-      : await NotificationService.getAll(accountId)
+    await NotificationService.getAccountNotifications(accountId)
 
   return res.status(200).json({
     success: true,
@@ -21,48 +20,49 @@ export const getNotifications = async (req: Request, res: Response) => {
   })
 }
 
-/**
- * MARK SINGLE AS READ
- */
-export const markAsRead = async (req: Request, res: Response) => {
-  const id = String(req.params.id)
+/* -------------------------------- */
+/* Get Unread Count                 */
+/* -------------------------------- */
 
-  const updated = await NotificationService.markAsRead(id)
-
-  return res.status(200).json({
-    success: true,
-    data: updated,
-  })
-}
-
-/**
- * MARK ALL AS READ
- */
-export const markAllAsRead = async (req: Request, res: Response) => {
+export const getUnreadCount = async (req: Request, res: Response) => {
   const accountId = String(req.params.accountId)
 
-  const items = await NotificationService.getUnread(accountId)
-
-  await Promise.all(
-    items.map((n) => NotificationService.markAsRead(n._id.toString())),
-  )
+  const count = await NotificationService.getUnreadCount(accountId)
 
   return res.status(200).json({
     success: true,
-    message: 'All notifications marked as read',
+    data: {
+      unread: count,
+    },
   })
 }
 
-/**
- * DELETE NOTIFICATION
- */
-export const deleteNotification = async (req: Request, res: Response) => {
-  const id = String(req.params.id)
+/* -------------------------------- */
+/* Mark Notification Read           */
+/* -------------------------------- */
 
-  await NotificationService.markAsRead(id) // (NOTE: bug here - see below)
+export const markNotificationRead = async (req: Request, res: Response) => {
+  const notificationId = String(req.params.notificationId)
+
+  const notification = await NotificationService.markRead(notificationId)
 
   return res.status(200).json({
     success: true,
-    message: 'Notification deleted',
+    data: notification,
+  })
+}
+
+/* -------------------------------- */
+/* Dismiss Notification             */
+/* -------------------------------- */
+
+export const dismissNotification = async (req: Request, res: Response) => {
+  const notificationId = String(req.params.notificationId)
+
+  const notification = await NotificationService.dismiss(notificationId)
+
+  return res.status(200).json({
+    success: true,
+    data: notification,
   })
 }

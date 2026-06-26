@@ -1,36 +1,21 @@
 // /src/routes/v1/notification.routes.ts
-
 import { Router } from 'express'
 
-
-import { authMiddleware } from '../../middleware/auth.middleware.js'
-import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
-import { deleteNotification, getNotifications, markAllAsRead, markAsRead } from '../../controllers/notification.controller.js'
+import {
+  getNotifications,
+  getUnreadCount,
+  markNotificationRead,
+  dismissNotification,
+} from '../../controllers/notification.controller.js'
 
 const router = Router()
 
-// protect all notification routes
-router.use(authMiddleware)
-router.use(tenantMiddleware)
+router.get('/account/:accountId', getNotifications)
 
-/**
- * GET ALL / UNREAD
- */
-router.get('/:accountId', getNotifications)
+router.get('/account/:accountId/unread', getUnreadCount)
 
-/**
- * MARK SINGLE AS READ
- */
-router.patch('/:id/read', markAsRead)
+router.patch('/:notificationId/read', markNotificationRead)
 
-/**
- * MARK ALL AS READ
- */
-router.patch('/:accountId/read-all', markAllAsRead)
-
-/**
- * DELETE NOTIFICATION
- */
-router.delete('/:id', deleteNotification)
+router.patch('/:notificationId/dismiss', dismissNotification)
 
 export default router

@@ -1,16 +1,35 @@
 // /src/routes/v1/message.routes.ts
 
 import { Router } from 'express'
-import { getSessionMessages } from '../../controllers/message.controller.js'
 
-import { authMiddleware } from '../../middleware/auth.middleware.js'
-import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
+import {
+  createMessage,
+  getMessages,
+  deliveredMessage,
+  readMessage,
+} from '../../controllers/message.controller.js'
 
 const router = Router()
 
-router.use(authMiddleware)
-router.use(tenantMiddleware)
+/* -------------------------------- */
+/* Messages                         */
+/* -------------------------------- */
 
-router.get('/:sessionId', getSessionMessages)
+router.post('/', createMessage)
+
+router.get(
+  '/session/:sessionId',
+  getMessages,
+)
+
+router.patch(
+  '/:messageId/delivered',
+  deliveredMessage,
+)
+
+router.patch(
+  '/:messageId/read',
+  readMessage,
+)
 
 export default router

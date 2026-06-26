@@ -26,6 +26,34 @@ const AccountSchema = new Schema<IAccount>(
       maxOperators: { type: Number, default: 5 },
       maxVisitors: { type: Number, default: 1000 },
     },
+    branding: {
+      companyLogo: String,
+      companyWebsite: String,
+      companyPhone: String,
+    },
+
+    subscription: {
+      stripeCustomerId: String,
+      subscriptionId: String,
+      expiresAt: Date,
+    },
+
+    usage: {
+      totalChats: {
+        type: Number,
+        default: 0,
+      },
+
+      totalVisitors: {
+        type: Number,
+        default: 0,
+      },
+
+      currentMonthMessages: {
+        type: Number,
+        default: 0,
+      },
+    },
   },
   { timestamps: true },
 )

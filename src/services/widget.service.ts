@@ -17,6 +17,20 @@ export interface WidgetInitializationResult {
   account: any
   onlineOperators: number
   visitor: any | null
+
+  widgetSettings: {
+    launcherPosition: string
+    launcherIcon?: string
+    welcomeMessage: string
+    offlineMessage: string
+    showAgentPhoto: boolean
+    soundEnabled: boolean
+    allowFileUpload: boolean
+    allowEmoji: boolean
+    allowScreenshots: boolean
+  }
+
+  isOnline: boolean
 }
 
 export interface WidgetVerificationResult {
@@ -124,9 +138,6 @@ export async function validateWidgetDomain(property: any, origin?: string) {
   return true
 }
 
-
-
-
 /* -------------------------------------------------------------------------- */
 /* Online Operator Status                                                     */
 /* -------------------------------------------------------------------------- */
@@ -194,9 +205,7 @@ export async function initializeWidgetSession(
   /* Account                              */
   /* ------------------------------------ */
 
-  const account = await validateAccount(
-    property.accountId.toString(),
-  )
+  const account = await validateAccount(property.accountId.toString())
 
   /* ------------------------------------ */
   /* Property Validation                  */
@@ -208,32 +217,29 @@ export async function initializeWidgetSession(
   /* Domain Validation                    */
   /* ------------------------------------ */
 
-  await validateWidgetDomain(
-    property,
-    origin,
-  )
+  await validateWidgetDomain(property, origin)
 
   /* ------------------------------------ */
   /* Parallel Operations                  */
   /* ------------------------------------ */
 
-  const [onlineOperators, visitor] =
-    await Promise.all([
-      getOnlineOperatorCount(
-        property.accountId.toString(),
-      ),
+  const [onlineOperators, visitor] = await Promise.all([
+    getOnlineOperatorCount(property.accountId.toString()),
 
-      createOrUpdateVisitor(
-        property._id.toString(),
-        visitorTrackingId,
-      ),
-    ])
+    createOrUpdateVisitor(property._id.toString(), visitorTrackingId),
+  ])
+
+  const isOnline = onlineOperators > 0 && property.settings.onlineStatus
 
   return {
     property,
     account,
     onlineOperators,
     visitor,
+
+    widgetSettings: property.widgetSettings,
+
+    isOnline,
   }
 }
 
@@ -247,16 +253,11 @@ export async function verifyWidgetAccess(
 ): Promise<WidgetVerificationResult> {
   const property = await getPropertyByWidgetId(widgetId)
 
-  const account = await validateAccount(
-    property.accountId.toString(),
-  )
+  const account = await validateAccount(property.accountId.toString())
 
   await validateProperty(property)
 
-  await validateWidgetDomain(
-    property,
-    origin,
-  )
+  await validateWidgetDomain(property, origin)
 
   return {
     property,
@@ -273,6 +274,8 @@ export function buildWidgetResponse(
   onlineOperators: number,
   visitor: any,
 ) {
+  const isOnline = onlineOperators > 0 && property.settings.onlineStatus
+
   return {
     status: 'success',
 
@@ -281,8 +284,14 @@ export function buildWidgetResponse(
     data: {
       widget: {
         id: property.widgetId,
+
         version: '1.0.0',
+
         initialized: true,
+
+        launcherPosition: property.widgetSettings.launcherPosition,
+
+        launcherIcon: property.widgetSettings.launcherIcon,
       },
 
       property: {
@@ -290,35 +299,108 @@ export function buildWidgetResponse(
 
         name: property.name,
 
-        settings: {
-          ...property.settings,
+        logo: property.details?.logoUrl,
 
-          isOnline:
-            onlineOperators > 0 &&
-            property.settings.onlineStatus,
-        },
+        category: property.details?.category,
+      },
+
+      chat: {
+        online: isOnline,
+
+        operators: onlineOperators,
+
+        welcomeMessage: isOnline
+          ? property.widgetSettings.welcomeMessage
+          : property.widgetSettings.offlineMessage,
+
+        allowFileUpload: property.widgetSettings.allowFileUpload,
+
+        allowEmoji: property.widgetSettings.allowEmoji,
+
+        allowScreenshots: property.widgetSettings.allowScreenshots,
+
+        soundEnabled: property.widgetSettings.soundEnabled,
+
+        showAgentPhoto: property.widgetSettings.showAgentPhoto,
       },
 
       visitor: visitor
         ? {
             id: visitor._id,
 
-            trackingId:
-              visitor.visitorTrackingId,
+            trackingId: visitor.visitorTrackingId,
 
             name: visitor.name,
+
+            pageViews: visitor.pageViews,
           }
         : null,
 
       system: {
-        online:
-          onlineOperators > 0 &&
-          property.settings.onlineStatus,
-
-        operators: onlineOperators,
-
         apiVersion: 'v1',
+
+        serverTime: new Date().toISOString(),
       },
     },
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Widget status helper                                                    */
+/* -------------------------------------------------------------------------- */
+export async function getWidgetStatus(widgetId: string) {
+  const property = await getPropertyByWidgetId(widgetId)
+
+  const onlineOperators = await getOnlineOperatorCount(
+    property.accountId.toString(),
+  )
+
+  return {
+    online: onlineOperators > 0 && property.settings.onlineStatus,
+
+    operators: onlineOperators,
+
+    welcomeMessage: property.widgetSettings.welcomeMessage,
+
+    offlineMessage: property.widgetSettings.offlineMessage,
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Widget typing presence update                                                  */
+/* -------------------------------------------------------------------------- */
+
+export async function updateVisitorPresence(
+  visitorTrackingId: string,
+  propertyId: string,
+) {
+  return Visitor.updateOne(
+    {
+      visitorTrackingId,
+      propertyId,
+    },
+    {
+      $set: {
+        isOnline: true,
+        lastSeen: new Date(),
+      },
+    },
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* widget analytics tracking                                               */
+/* -------------------------------------------------------------------------- */
+
+export async function trackWidgetOpen(propertyId: string) {
+  return Property.updateOne(
+    {
+      _id: propertyId,
+    },
+    {
+      $inc: {
+        'usage.totalChats': 1,
+      },
+    },
+  )
 }

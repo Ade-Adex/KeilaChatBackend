@@ -1,66 +1,113 @@
 // /src/controllers/message.controller.ts
 
 import type { Request, Response, NextFunction } from 'express'
-import { catchAsync } from '../config/errorHandler.js'
-import { AppError } from '../services/appError.js'
-import Message from '../models/Message.js'
-import ChatSession from '../models/ChatSession.js'
-import Operator from '../models/Operator.js'
 
-export const getSessionMessages = catchAsync(
+import { catchAsync } from '../config/errorHandler.js'
+
+import { AppError } from '../services/appError.js'
+
+import {
+  sendMessage,
+  getMessages as getSessionMessages,
+  markDelivered,
+  markSeen,
+} from '../services/message.service.js'
+
+function getParam(value: string | string[] | undefined, name: string): string {
+  if (!value || Array.isArray(value)) {
+    throw new AppError(`${name} is required`, 400)
+  }
+
+  return value
+}
+
+/* -------------------------------------------------- */
+/* Send Message                                       */
+/* -------------------------------------------------- */
+
+export const createMessage = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { sessionId } = req.params
-    const { propertyId } = req.query
+    const {
+      sessionId,
+      senderType,
+      senderId,
+      messageText,
+      messageType,
+      isFromAI,
+    } = req.body
 
     if (!sessionId) {
-      return next(new AppError('Session ID is required.', 400))
+      return next(new AppError('Session ID is required', 400))
     }
 
-    const session = await ChatSession.findById(sessionId).lean()
-    if (!session) {
-      return next(new AppError('Session not found.', 404))
-    }
-
-    // tenant check
-    if (propertyId && session.propertyId.toString() !== propertyId.toString()) {
-      return next(new AppError('Unauthorized access.', 403))
-    }
-
-    const messages = await Message.find({ sessionId })
-      .sort({ createdAt: 1 })
-      .lean()
-
-    const hydratedMessages = await Promise.all(
-      messages.map(async (msg) => {
-        let senderName: string | undefined
-
-        if (msg.senderType === 'operator') {
-          const operator = await Operator.findById(msg.senderId).lean()
-
-          senderName = operator
-            ? `${operator.firstName ?? ''} ${operator.lastName ?? ''}`.trim()
-            : 'Support'
-        }
-
-        if (msg.senderType === 'ai') {
-          senderName = 'AI Assistant'
-        }
-
-        if (msg.senderType === 'system') {
-          senderName = 'System'
-        }
-
-        return {
-          ...msg,
-          senderName, // injected dynamically (NOT stored in DB)
-        }
-      }),
+    const message = await sendMessage(
+      sessionId,
+      senderType,
+      senderId,
+      messageText,
+      {
+        messageType,
+        isFromAI,
+      },
     )
+
+    res.status(201).json({
+      status: 'success',
+      data: message,
+    })
+  },
+)
+
+/* -------------------------------------------------- */
+/* Get Session Messages                               */
+/* -------------------------------------------------- */
+
+export const getMessages = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const sessionId = getParam(req.params.sessionId, 'Session ID')
+
+   const messages = await getSessionMessages(sessionId)
 
     res.status(200).json({
       status: 'success',
-      results: hydratedMessages.length,
-      data: { messages: hydratedMessages },
+      results: messages.length,
+      data: messages,
+    })
+  },
+)
+
+/* -------------------------------------------------- */
+/* Mark Delivered                                     */
+/* -------------------------------------------------- */
+
+export const deliveredMessage = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const messageId = getParam(req.params.messageId, 'Message ID')
+
+    const message = await markDelivered(messageId)
+
+    res.status(200).json({
+      status: 'success',
+      data: message,
+    })
+  },
+)
+
+/* -------------------------------------------------- */
+/* Mark Read                                          */
+/* -------------------------------------------------- */
+
+export const readMessage = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const messageId = getParam(req.params.messageId, 'Message ID')
+
+    const { operatorId } = req.body
+
+    const message = await markSeen(messageId, operatorId)
+
+    res.status(200).json({
+      status: 'success',
+      data: message,
     })
   },
 )

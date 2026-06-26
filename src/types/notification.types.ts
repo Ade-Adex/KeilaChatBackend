@@ -18,16 +18,28 @@ export type NotificationStatus = 'unread' | 'read'
 
 export interface INotification extends BaseEntity {
   accountId: Types.ObjectId
+
   propertyId?: Types.ObjectId
+
   userId?: Types.ObjectId
 
   title: string
+
   message: string
 
   type: NotificationType
+
   priority: NotificationPriority
 
   status: NotificationStatus
+
+  actionUrl?: string
+
+  icon?: string
+
+  dismissed: boolean
+
+  expiresAt?: Date
 
   data?: Record<string, any>
 

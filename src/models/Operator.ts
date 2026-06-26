@@ -69,6 +69,33 @@ const OperatorSchema = new Schema<IOperator>(
     },
 
     lastSeen: Date,
+    isTyping: {
+      type: Boolean,
+      default: false,
+    },
+    currentSessionId: {
+      type: Schema.Types.ObjectId,
+      ref: 'ChatSession',
+    },
+    stats: {
+      chatsHandled: {
+        type: Number,
+        default: 0,
+      },
+
+      averageResponseTime: {
+        type: Number,
+        default: 0,
+      },
+
+      satisfactionScore: {
+        type: Number,
+        default: 0,
+      },
+    },
+    lastTypingAt: Date,
+
+    joinedAt: Date,
 
     availabilityStatus: {
       type: String,

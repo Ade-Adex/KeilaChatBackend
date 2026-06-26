@@ -55,10 +55,110 @@ const ChatSessionSchema = new Schema<IChatSession>(
       currentPage: String,
       referrer: String,
     },
+    transferredTo: {
+      type: Schema.Types.ObjectId,
+      ref: 'Operator',
+      default: null,
+    },
+    sessionNumber: Number,
+    closedBy: {
+      type: String,
+
+      enum: ['visitor', 'operator', 'system'],
+    },
+    analytics: {
+      totalMessages: {
+        type: Number,
+        default: 0,
+      },
+
+      visitorMessages: {
+        type: Number,
+        default: 0,
+      },
+
+      operatorMessages: {
+        type: Number,
+        default: 0,
+      },
+
+      aiMessages: {
+        type: Number,
+        default: 0,
+      },
+
+      averageReplyTime: {
+        type: Number,
+        default: 0,
+      },
+
+      duration: {
+        type: Number,
+        default: 0,
+      },
+    },
+    internalNotes: [
+      {
+        operatorId: {
+          type: Schema.Types.ObjectId,
+
+          ref: 'Operator',
+        },
+
+        note: String,
+
+        createdAt: Date,
+      },
+    ],
+    aiSummary: String,
+
+    conversationIntent: String,
+
+    sentiment: String,
+    rating: {
+      stars: Number,
+
+      feedback: String,
+
+      submittedAt: Date,
+    },
+    queuePosition: Number,
+    unreadVisitor: {
+      type: Number,
+      default: 0,
+    },
+
+    unreadOperator: {
+      type: Number,
+      default: 0,
+    },
+    lastMessage: String,
+
+    lastMessageAt: Date,
+
+    visitorTyping: {
+      type: Boolean,
+      default: false,
+    },
+
+    operatorTyping: {
+      type: Boolean,
+      default: false,
+    },
+    archived: {
+      type: Boolean,
+      default: false,
+    },
 
     startedAt: Date,
     firstResponseAt: Date,
     endedAt: Date,
+
+    visitorJoinedAt: Date,
+
+    operatorJoinedAt: Date,
+
+    lastActivityAt: Date,
 
     waitTimeMs: Number,
     resolutionTimeMs: Number,

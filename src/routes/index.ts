@@ -7,6 +7,7 @@ import widgetRouter from './v1/widget.routes.js'
 import sessionRouter from './v1/session.routes.js'
 import propertyRouter from './v1/property.routes.js'
 import operatorRouter from './v1/operator.routes.js'
+import chatRoutes from './v1/chat.routes.js'
 import messageRouter from './v1/message.routes.js'
 import notificationRouter from './v1/notification.routes.js'
 import aiRouter from './v1/ai.routes.js'
@@ -23,6 +24,7 @@ router.use('/widget', widgetRouter)
 router.use('/sessions', sessionRouter)
 router.use('/properties', propertyRouter)
 router.use('/operators', operatorRouter)
+router.use('/chat', chatRoutes)
 router.use('/messages', messageRouter)
 router.use('/notifications', notificationRouter)
 router.use('/ai', aiRouter)

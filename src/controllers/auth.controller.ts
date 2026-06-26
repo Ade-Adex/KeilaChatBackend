@@ -4,7 +4,7 @@ import type { Request, Response } from 'express'
 import { AuthService } from '../services/auth.service.js'
 import { generateTokenPair } from '../utils/auth/tokens.js'
 import { verifyJwt } from '../utils/auth/jwt.js'
-import { SessionService } from '../services/session.service.js'
+import { SessionService } from '../services/auth-session.service.js'
 import Operator from '../models/Operator.js'
 
 /**

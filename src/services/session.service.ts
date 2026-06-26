@@ -1,29 +1,82 @@
 // /src/services/session.service.ts
 
-import redisClient from '../config/redis.js'
+import ChatSession from '../models/ChatSession.js'
 
-const PREFIX = 'refresh_session:'
+import { AppError } from './appError.js'
 
-export class SessionService {
-  static async storeSession(
-    sessionId: string,
-    data: object,
-    ttlSeconds = 7 * 24 * 60 * 60,
-  ) {
-    await redisClient.set(
-      `${PREFIX}${sessionId}`,
-      JSON.stringify(data),
-      'EX',
-      ttlSeconds,
-    )
+export async function getSessionById(sessionId: string) {
+  const session = await ChatSession.findById(sessionId)
+    .populate('assignedOperatorId', 'firstName lastName email avatar')
+    .populate('visitorId', 'name email')
+
+  if (!session) {
+    throw new AppError('Chat session not found', 404)
   }
 
-  static async getSession(sessionId: string) {
-    const data = await redisClient.get(`${PREFIX}${sessionId}`)
-    return data ? JSON.parse(data) : null
-  }
-
-  static async deleteSession(sessionId: string) {
-    await redisClient.del(`${PREFIX}${sessionId}`)
-  }
+  return session
 }
+
+export async function getActiveSessions(propertyId: string) {
+  return ChatSession.find({
+    propertyId,
+    status: 'active',
+  })
+    .sort({
+      updatedAt: -1,
+    })
+    .populate('assignedOperatorId', 'firstName lastName')
+    .populate('visitorId', 'name')
+}
+
+export async function getQueuedSessions(propertyId: string) {
+  return ChatSession.find({
+    propertyId,
+    status: 'queued',
+  })
+    .sort({
+      createdAt: 1,
+    })
+    .populate('visitorId', 'name')
+}
+
+export async function getOperatorSessions(operatorId: string) {
+  return ChatSession.find({
+    assignedOperatorId: operatorId,
+  })
+    .sort({
+      updatedAt: -1,
+    })
+    .populate('visitorId', 'name email')
+}
+
+export async function getPropertySessions(propertyId: string) {
+  return ChatSession.find({
+    propertyId,
+  })
+    .sort({
+      createdAt: -1,
+    })
+    .populate('assignedOperatorId', 'firstName lastName')
+    .populate('visitorId', 'name')
+}
+
+export async function getOpenSessionCount(propertyId: string) {
+  return ChatSession.countDocuments({
+    propertyId,
+    status: {
+      $in: ['queued', 'active'],
+    },
+  })
+}
+
+
+export async function getClosedSessionCount(
+  propertyId: string,
+) {
+  return ChatSession.countDocuments({
+    propertyId,
+    status: 'closed',
+  })
+}
+
+

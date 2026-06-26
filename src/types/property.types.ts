@@ -3,7 +3,6 @@
 import type { Types } from 'mongoose'
 import type { BaseEntity } from './common.types.js'
 
-
 export interface PropertyDetails {
   category: string
   subCategory: string
@@ -23,18 +22,54 @@ export interface PropertySettings {
   responseTimeGoalMs?: number
 }
 
+export interface WidgetSettings {
+  launcherPosition: 'bottom-right' | 'bottom-left'
+
+  launcherIcon?: string
+
+  welcomeMessage: string
+
+  offlineMessage: string
+
+  showAgentPhoto: boolean
+
+  soundEnabled: boolean
+
+  allowFileUpload: boolean
+
+  allowEmoji: boolean
+
+  allowScreenshots: boolean
+}
+
+export interface InstallationInfo {
+  installedAt?: Date
+
+  lastVerified?: Date
+
+  verified: boolean
+}
+
 export interface IProperty extends BaseEntity {
   accountId: Types.ObjectId
 
   name: string
+
   domain: string
+
   allowedDomains: string[]
 
   widgetId: string
+
   apiKey: string
 
   details: PropertyDetails
+
   settings: PropertySettings
+
+  widgetSettings: WidgetSettings
+
+  installation: InstallationInfo
 
   workingHours?: {
     enabled: boolean

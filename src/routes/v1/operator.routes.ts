@@ -13,6 +13,9 @@ import {
   updateProfile,
   verifyInvite,
   acceptInvite,
+  getMySessions,
+  updatePresence,
+  availableOperators,
 } from '../../controllers/operator.controller.js'
 
 
@@ -40,5 +43,27 @@ router.post('/invite', rbac('admin'), inviteOperator)
 router.get('/profile', getProfile)
 
 router.put('/profile', updateProfile)
+
+
+/*
+|--------------------------------------------------------------------------
+| Live Chat
+|--------------------------------------------------------------------------
+*/
+
+router.get(
+  '/my-sessions',
+  getMySessions,
+)
+
+router.patch(
+  '/presence',
+  updatePresence,
+)
+
+router.get(
+  '/available',
+  availableOperators,
+)
 
 export default router

@@ -1,5 +1,9 @@
 // /src/services/presence.service.ts
 
+
+
+//  You'll use this for: online badge, away badge, last seen, operator availability, visitor online/offline, "John is typing", "John joined"
+
 import redisClient from '../config/redis.js'
 
 export class PresenceService {

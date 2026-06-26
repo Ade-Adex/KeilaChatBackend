@@ -5,17 +5,34 @@ import { Router } from 'express'
 import {
   initializeWidget,
   verifyWidget,
+  widgetStatus,
+  getWidgetSettings,
 } from '../../controllers/widget.controller.js'
 
 const router = Router()
 
-router.post('/init', initializeWidget)
+/* -------------------------------- */
+/* Widget                           */
+/* -------------------------------- */
 
-router.post('/verify', verifyWidget)
+router.post(
+  '/initialize',
+  initializeWidget,
+)
 
-// Future
-// router.post('/heartbeat', widgetHeartbeat)
+router.get(
+  '/:widgetId/verify',
+  verifyWidget,
+)
 
-// router.post('/config', widgetConfig)
+router.get(
+  '/:widgetId/status',
+  widgetStatus,
+)
+
+router.get(
+  '/:widgetId/settings',
+  getWidgetSettings,
+)
 
 export default router

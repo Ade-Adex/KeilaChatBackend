@@ -17,6 +17,13 @@ const NotificationSchema = new Schema<INotification>(
       ref: 'Property',
       default: null,
     },
+    actionUrl: String,
+    icon: String,
+    expiresAt: Date,
+    dismissed: {
+      type: Boolean,
+      default: false,
+    },
 
     userId: {
       type: Schema.Types.ObjectId,

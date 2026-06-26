@@ -10,6 +10,9 @@ import {
   inviteOperatorToAccount,
   verifyOperatorInvite,
   acceptOperatorInvite,
+  getOperatorSessions,
+  updateOperatorPresence,
+  getAvailableOperators,
 } from '../services/operator.service.js'
 
 /* -------------------------------------------------------------------------- */
@@ -154,3 +157,57 @@ export const acceptInvite = catchAsync(
     })
   },
 )
+
+export const getMySessions = catchAsync(
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const operatorId = req.user?.userId
+
+    if (!operatorId) {
+      return next(new AppError('Unauthorized', 401))
+    }
+
+    const sessions = await getOperatorSessions(operatorId)
+
+    return res.status(200).json({
+      status: 'success',
+      results: sessions.length,
+      data: sessions,
+    })
+  },
+)
+
+export const updatePresence = catchAsync(
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const operatorId = req.user?.userId
+
+    if (!operatorId) {
+      return next(new AppError('Unauthorized', 401))
+    }
+
+    const operator = await updateOperatorPresence(operatorId, req.body.status)
+
+    return res.status(200).json({
+      status: 'success',
+      data: operator,
+    })
+  },
+)
+
+export const availableOperators = catchAsync(
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const accountId = req.user?.accountId
+
+    if (!accountId) {
+      return next(new AppError('Account context missing', 400))
+    }
+
+    const operators = await getAvailableOperators(accountId)
+
+    return res.status(200).json({
+      status: 'success',
+      data: operators,
+    })
+  },
+)
+
+
