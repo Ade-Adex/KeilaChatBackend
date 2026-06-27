@@ -55,22 +55,31 @@ export const verifyWidget = catchAsync(
     res.status(200).json({
       status: 'success',
 
-      message: 'Widget verification successful.',
-
       data: {
+        id: property.widgetId,
+
+        name: property.name,
+
+        theme: {
+          primaryColor: property.widgetSettings?.primaryColor ?? '#2563eb',
+        },
+
+        settings: {
+          welcomeMessage:
+            property.widgetSettings?.welcomeMessage ??
+            'Hi! How can we help you today?',
+
+          offlineMessage:
+            property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
+
+          allowFileUpload: property.widgetSettings?.allowFileUpload ?? true,
+
+          allowEmoji: property.widgetSettings?.allowEmoji ?? true,
+
+          allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
+        },
+
         verified: true,
-
-        widget: {
-          id: property.widgetId,
-          version: '1.0.0',
-        },
-
-        property: {
-          id: property._id,
-          name: property.name,
-        },
-
-        apiVersion: 'v1',
       },
     })
   },
