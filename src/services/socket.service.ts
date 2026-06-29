@@ -12,9 +12,7 @@ import Operator from '../models/Operator.js'
 import ChatSession from '../models/ChatSession.js'
 import Message from '../models/Message.js'
 
-import {
-  operatorJoined,
-} from './message.service.js'
+import { operatorJoined } from './message.service.js'
 
 import type {
   JoinChatPayload,
@@ -65,7 +63,6 @@ export class SocketService {
 
             if (operatorId) {
               socket.join(`operator:${operatorId}`)
-
               socket.data.operatorId = operatorId
 
               await PresenceService.setOperatorOnline(operatorId, socket.id)
@@ -90,7 +87,6 @@ export class SocketService {
 
           if (data.visitorId) {
             socket.join(`visitor:${data.visitorId}`)
-            // Track connection in socket context
             socket.data.visitorId = data.visitorId
             await PresenceService.setVisitorActive(
               data.visitorId,
@@ -107,15 +103,11 @@ export class SocketService {
 
             await PresenceService.setOperatorOnline(data.operatorId, socket.id)
 
-            // Fetch clean history safely
             const messages = await Message.find({ sessionId: data.sessionId })
               .sort({ createdAt: 1 })
               .lean()
 
             socket.emit('chat_history', messages)
-
-            // NOTE: We removed the aggressive automated operatorJoined system message creation
-            // from here because it's already cleanly handled inside your chat-session.service.ts controller!
           }
 
           socket.to(room).emit('presence_notification', {
@@ -151,13 +143,25 @@ export class SocketService {
       /* -------------------------------------------------- */
       socket.on('send_message', async (data: SendMessagePayload) => {
         try {
-          // Step 1: Let the Pipeline process DB, auto-assignment, AND target operator notifications
+          // Step 1: Process DB persistence, run pipelines, and execute auto-assignments
           const message = await MessagePipeline.processMessage(data)
 
-          // Step 2: Cleanly broadcast out to the global session room (Visitor view + alternative listeners)
+          // Step 2: Cleanly broadcast to the focused active chat viewport room
           EventService.emitToSession(data.sessionId, 'new_message', message)
 
-          // Step 3: Send back the delivery confirmation directly to the sender instance
+          // Step 3: Fetch structural details to notify dashboards monitoring this property
+          const session = await ChatSession.findById(data.sessionId).lean()
+          if (session && session.propertyId) {
+            const propertyRoom = `property:dashboard:${session.propertyId.toString()}`
+
+            // Broadcast the target dashboard event so components update without a refresh
+            this.io.to(propertyRoom).emit('dashboard_message_update', {
+              sessionId: data.sessionId,
+              message: message,
+            })
+          }
+
+          // Step 4: Confirm delivery to sender instance
           socket.emit('message_delivered', {
             messageId: message._id,
             sessionId: data.sessionId,
@@ -177,7 +181,6 @@ export class SocketService {
         if (!propertyId) return
 
         socket.join(`property:dashboard:${propertyId}`)
-
         logger.info(`🔔 Notification room joined ${propertyId}`)
       })
 
@@ -191,7 +194,7 @@ export class SocketService {
       })
 
       /* -------------------------------------------------- */
-      /* DISCONNECT STATE (CORRECTED)                        */
+      /* DISCONNECT STATE (CORRECTED)                       */
       /* -------------------------------------------------- */
       socket.on('disconnect', async () => {
         try {
