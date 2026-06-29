@@ -11,17 +11,21 @@ import Operator from '../models/Operator.js'
  * HELPER: set auth cookies
  */
 function setAuthCookies(res: Response, tokens: any, rememberMe = false) {
+  const isProd = process.env.NODE_ENV === 'production'
+
   res.cookie('access_token', tokens.accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    path: '/',
     maxAge: 15 * 60 * 1000,
   })
 
   res.cookie('refresh_token', tokens.refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+    path: '/',
     maxAge: rememberMe ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000,
   })
 }
@@ -148,7 +152,6 @@ export const resetPassword = async (req: Request, res: Response) => {
   }
 }
 
-
 /**
  * REFRESH TOKEN (ROTATION SYSTEM)
  */
@@ -214,6 +217,7 @@ export const refreshToken = async (req: Request, res: Response) => {
 export const logoutOperator = async (req: Request, res: Response) => {
   try {
     const refreshToken = req.cookies?.refresh_token
+    const isProd = process.env.NODE_ENV === 'production'
 
     if (refreshToken) {
       const decoded = verifyJwt(refreshToken)
@@ -225,14 +229,16 @@ export const logoutOperator = async (req: Request, res: Response) => {
 
     res.clearCookie('access_token', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/',
     })
 
     res.clearCookie('refresh_token', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/',
     })
 
     return res.status(200).json({
