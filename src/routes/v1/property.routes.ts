@@ -3,6 +3,7 @@
 import { Router } from 'express'
 
 import {
+  getMyProperties,
   getPropertyDetails,
   getWebsiteSettings,
   updateWebsiteSettings,
@@ -16,6 +17,8 @@ const router = Router()
 
 router.use(authMiddleware)
 router.use(tenantMiddleware)
+
+router.get('/', getMyProperties)
 
 router.get('/settings', rbac('admin'), getWebsiteSettings)
 

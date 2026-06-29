@@ -21,17 +21,18 @@ router.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'API running' })
 })
 
+// Look for this block in /src/routes/index.ts and group it cleanly under v1:
+
 router.use('/auth', authRouter)
 router.use('/widget', widgetRouter)
 router.use('/sessions', sessionRouter)
 router.use('/properties', propertyRouter)
 router.use('/operators', operatorRouter)
 router.use('/chat', chatRoutes)
-router.use('/messages', messageRouter)
+router.use('/messages', messageRouter) // <-- Moved here! Now it correctly listens on /api/v1/messages
 router.use('/notifications', notificationRouter)
 router.use('/dashboard', dashboardRouter)
 router.use('/ai', aiRouter)
 router.use('/account', accountRouter) 
-
 
 export default router

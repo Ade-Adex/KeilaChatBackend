@@ -31,7 +31,6 @@ export const createMessage = catchAsync(
     const {
       sessionId,
       senderType,
-      senderId,
       messageText,
       messageType,
       isFromAI,
@@ -41,11 +40,28 @@ export const createMessage = catchAsync(
       return next(new AppError('Session ID is required', 400))
     }
 
+    // 1. Safely extract operator ID from authMiddleware state
+    // Cast to 'any' here or import your AuthRequest type interface to read .user properties safely
+    const reqWithAuth = req as any
+    const authenticatedOperatorId = reqWithAuth.user?.id || reqWithAuth.user?._id
+
+    // 2. Fallback cascade layout: Use explicitly provided body param or fallback to token context
+    let finalSenderId = req.body.senderId
+
+    if (senderType === 'operator') {
+      finalSenderId = finalSenderId || authenticatedOperatorId
+
+      if (!finalSenderId) {
+        return next(new AppError('Authentication context missing or expired for operator', 401))
+      }
+    }
+
+    // 3. Forward complete sanitised context to pipeline execution layer
     const message = await MessagePipeline.processMessage({
       sessionId,
       propertyId: req.body.propertyId,
       senderType,
-      senderId,
+      senderId: finalSenderId, // <-- Fixed: Passes down verified ID
       messageText,
       messageType,
       isFromAI,

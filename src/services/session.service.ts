@@ -30,10 +30,13 @@ export async function getActiveSessions(propertyId: string) {
     .populate('visitorId', 'name')
 }
 
+/* -------------------------------------------------------------------------- */
+/* UPDATED: Catching both 'queued' and 'waiting' incoming stream states      */
+/* -------------------------------------------------------------------------- */
 export async function getQueuedSessions(propertyId: string) {
   return ChatSession.find({
     propertyId,
-    status: 'queued',
+    status: { $in: ['queued', 'waiting'] }, // <-- Changed to accept both variants
   })
     .sort({
       createdAt: 1,
@@ -66,7 +69,7 @@ export async function getOpenSessionCount(propertyId: string) {
   return ChatSession.countDocuments({
     propertyId,
     status: {
-      $in: ['queued', 'active'],
+      $in: ['queued', 'active', 'waiting'],
     },
   })
 }
@@ -85,70 +88,47 @@ export async function initiateVisitorSession({
   widgetId: string
   visitorTrackingId: string
 }) {
-  /*
-   * Find property by widgetId
-   */
-  const property = await Property.findOne({
-    widgetId,
-  })
-
+  const property = await Property.findOne({ widgetId })
   if (!property) {
     throw new AppError('Invalid widget', 404)
   }
 
-  /*
-   * Find visitor
-   */
   const visitor = await Visitor.findOne({
     propertyId: property._id,
     visitorTrackingId,
   })
-
   if (!visitor) {
     throw new AppError('Visitor not found', 404)
   }
 
-  /*
-   * Existing active session
-   */
- const session = await ChatSession.findOneAndUpdate(
-   {
-     propertyId: property._id,
-
-     visitorId: visitor._id,
-
-     status: {
-       $in: ['waiting', 'queued', 'active'],
-     },
-   },
-   {
-     $setOnInsert: {
-       propertyId: property._id,
-
-       visitorId: visitor._id,
-
-       status: 'waiting',
-
-       channel: 'widget',
-
-       visitorJoinedAt: new Date(),
-
-       lastActivityAt: new Date(),
-     },
-   },
-   {
-     upsert: true,
-     new: true,
-   },
- )
+  const session = await ChatSession.findOneAndUpdate(
+    {
+      propertyId: property._id,
+      visitorId: visitor._id,
+      status: {
+        $in: ['waiting', 'queued', 'active'],
+      },
+    },
+    {
+      $setOnInsert: {
+        propertyId: property._id,
+        visitorId: visitor._id,
+        status: 'waiting',
+        channel: 'widget',
+        visitorJoinedAt: new Date(),
+        lastActivityAt: new Date(),
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+    },
+  )
 
   return {
     sessionId: session._id.toString(),
-
     propertyId: session.propertyId.toString(),
-
     visitorId: session.visitorId.toString(),
-
     status: session.status,
   }
 }
