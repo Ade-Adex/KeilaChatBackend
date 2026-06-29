@@ -376,15 +376,6 @@ export async function operatorJoinChat(sessionId: string, operatorId: string) {
 
   await session.save()
 
-  await Operator.updateOne(
-    { _id: operatorId },
-    {
-      $inc: {
-        activeChatsCount: 1,
-      },
-    },
-  )
-
   return session
 }
 
@@ -402,19 +393,17 @@ export async function operatorLeaveChat(sessionId: string, operatorId: string) {
 
   await session.save()
 
-  await Operator.findOneAndUpdate(
-    {
-      _id: operatorId,
-      activeChatsCount: {
-        $gt: 0,
-      },
-    },
-    {
-      $inc: {
-        activeChatsCount: -1,
-      },
-    },
-  )
+ await Operator.findOneAndUpdate(
+   {
+     _id: session.assignedOperatorId,
+     activeChatsCount: { $gt: 0 },
+   },
+   {
+     $inc: {
+       activeChatsCount: -1,
+     },
+   },
+ )
 
   return session
 }

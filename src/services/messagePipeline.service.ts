@@ -69,14 +69,14 @@ export class MessagePipeline {
       options,
     )
 
-    /*
-     * STEP 2
-     * Update session preview
-     */
-    session.lastMessage = messageText
-    session.lastMessageAt = new Date()
+    // /*
+    //  * STEP 2
+    //  * Update session preview
+    //  */
+    // session.lastMessage = messageText
+    // session.lastMessageAt = new Date()
 
-    await session.save()
+    // await session.save()
 
     /*
      * STEP 3
@@ -97,60 +97,33 @@ export class MessagePipeline {
  * Auto assign operator
  ****************************************
  */
-if (senderType === 'visitor') {
-  const operator =
-    await AssignmentService.assignOperatorToSession(
-      propertyId,
-      sessionId,
-    )
+if (senderType === 'visitor' && !session.assignedOperatorId) {
+  const operator = await AssignmentService.assignOperatorToSession(
+    propertyId,
+    sessionId,
+  )
 
-  /*
-   * Operator found
-   */
   if (operator) {
-    EventService.emitToOperator(
-      operator._id.toString(),
-      'chat_assigned',
-      {
-        sessionId,
-        propertyId,
-        operatorId: operator._id,
-      },
-    )
-
-    EventService.emitToProperty(
-      propertyId,
-      'dashboard_chat_assigned',
-      {
-        sessionId,
-        operatorId: operator._id,
-      },
-    )
-  }
-
-  /*
-   * No operator available
-   */
-  else {
-    await QueueService.addToQueue(
-      propertyId,
+    EventService.emitToOperator(operator._id.toString(), 'chat_assigned', {
       sessionId,
-    )
-
-    await ChatSession.findByIdAndUpdate(
-      sessionId,
-      {
-        status: 'queued',
-      },
-    )
-
-    EventService.emitToProperty(
       propertyId,
-      'dashboard_chat_queued',
-      {
-        sessionId,
-      },
-    )
+      operatorId: operator._id,
+    })
+
+    EventService.emitToProperty(propertyId, 'dashboard_chat_assigned', {
+      sessionId,
+      operatorId: operator._id,
+    })
+  } else {
+    await QueueService.addToQueue(propertyId, sessionId)
+
+    await ChatSession.findByIdAndUpdate(sessionId, {
+      status: 'queued',
+    })
+
+    EventService.emitToProperty(propertyId, 'dashboard_chat_queued', {
+      sessionId,
+    })
   }
 }
 

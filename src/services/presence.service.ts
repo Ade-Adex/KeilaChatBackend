@@ -44,12 +44,15 @@ export class PresenceService {
     return redisClient.hget(`operator:${operatorId}`, 'socketId')
   }
 
-
   static async setVisitorActive(visitorId: string, sessionId: string) {
     await redisClient.set(`visitor:session:${visitorId}`, sessionId)
   }
 
   static async getVisitorSession(visitorId: string) {
     return await redisClient.get(`visitor:session:${visitorId}`)
+  }
+
+  static async removeVisitor(visitorId: string) {
+    await redisClient.del(`visitor:session:${visitorId}`)
   }
 }

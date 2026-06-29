@@ -153,6 +153,16 @@ export class SocketService {
 
           EventService.emitToSession(data.sessionId, 'new_message', message)
 
+          const session = await ChatSession.findById(data.sessionId)
+
+          if (session?.assignedOperatorId) {
+            EventService.emitToOperator(
+              session.assignedOperatorId.toString(),
+              'new_message',
+              message,
+            )
+          }
+
           socket.emit('message_delivered', {
             messageId: message._id,
             sessionId: data.sessionId,
