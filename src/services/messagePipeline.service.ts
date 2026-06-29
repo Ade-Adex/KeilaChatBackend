@@ -112,6 +112,23 @@ export class MessagePipeline {
         })
 
         /*
+         * FORCE OPERATOR SOCKET INTO SOCKET.IO SESSION ROOM
+         * This ensures they receive subsequent messages sent to the session room.
+         */
+        const { PresenceService } = await import('./presence.service.js')
+        const operatorSocketId = await PresenceService.getOperatorSocket(
+          operator._id.toString(),
+        )
+
+        if (operatorSocketId && EventService.io) {
+          const activeSocket =
+            EventService.io.sockets.sockets.get(operatorSocketId)
+          if (activeSocket) {
+            activeSocket.join(`session:${sessionId}`)
+          }
+        }
+
+        /*
          * VERY IMPORTANT:
          * send first visitor message
          */

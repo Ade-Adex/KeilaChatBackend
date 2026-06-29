@@ -6,6 +6,11 @@ import Property from '../models/Property.js'
 import Operator from '../models/Operator.js'
 import { Types } from 'mongoose'
 
+
+import { PresenceService } from './presence.service.js'
+import { EventService } from './event.service.js'
+import { operatorJoined } from './message.service.js'
+
 import { AppError } from './appError.js'
 
 interface VisitorPayload {
@@ -357,20 +362,65 @@ export async function addInternalNote(
 // Operator join chat
 
 export async function operatorJoinChat(sessionId: string, operatorId: string) {
+  // 1. Perform your existing validation and database updates
   const session = await ChatSession.findById(sessionId)
-
   if (!session) {
-    throw new AppError('Session not found', 404)
+    throw new AppError('Chat session not found', 404)
   }
 
-  session.assignedOperatorId = new Types.ObjectId(operatorId)
-  session.status = 'active'
-
-  if (!session.firstResponseAt) {
-    session.firstResponseAt = new Date()
+ session.status = 'active'
+ if (!session.assignedOperatorId) {
+   session.assignedOperatorId = new Types.ObjectId(operatorId)
   }
-
+  
   await session.save()
+
+  /*
+   **************************************************************************
+   * PROFESSIONAL FIX: AUTOMATED OVER-THE-AIR WEBSOCKET ROOM ENTRY
+   **************************************************************************
+   */
+  // Fetch the operator's active live socket ID from the Redis presence cache
+  const operatorSocketId = await PresenceService.getOperatorSocket(operatorId)
+
+  if (operatorSocketId && EventService.io) {
+    const activeSocket = EventService.io.sockets.sockets.get(operatorSocketId)
+    if (activeSocket) {
+      const room = `session:${sessionId}`
+
+      // Force the operator connection instance into the session room seamlessly
+      activeSocket.join(room)
+
+      // Also ensure they are joined to the dashboard context for real-time overview syncing
+      activeSocket.join(`property:dashboard:${session.propertyId.toString()}`)
+    }
+  }
+
+  /*
+   **************************************************************************
+   * SYSTEM NOTIFICATION AUTOMATION
+   **************************************************************************
+   */
+  const operator = await Operator.findById(operatorId)
+  if (operator) {
+    const operatorName = `${operator.firstName} ${operator.lastName}`
+
+    // Create the system message tracking the join event history
+    const systemMessage = await operatorJoined(sessionId, operatorName)
+
+    // Broadcast live to everyone currently inside the session channel
+    EventService.emitToSession(sessionId, 'new_message', systemMessage)
+
+    // Broadcast status change to the property dashboard management interface
+    EventService.emitToProperty(
+      session.propertyId.toString(),
+      'dashboard_chat_assigned',
+      {
+        sessionId,
+        operatorId,
+      },
+    )
+  }
 
   return session
 }
