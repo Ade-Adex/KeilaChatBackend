@@ -1,8 +1,10 @@
-//  /src/bootstrap/express.ts
+// /src/bootstrap/express.ts
 
 import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
+
+import Property from '../models/Property.js'
 
 import appRouter from '../routes/index.js'
 import { globalErrorHandler } from '../config/errorHandler.js'
@@ -13,17 +15,52 @@ export const bootstrapExpress = () => {
 
   app.use(
     cors({
-      origin: true,
       credentials: true,
+
+      origin: async (origin, callback) => {
+        try {
+          /*
+           * Browser-less clients
+           */
+          if (!origin) {
+            return callback(null, true)
+          }
+
+          /*
+           * YOUR FRONTEND
+           */
+          if (
+            origin === ENV.BASE_URL
+          ) {
+            return callback(null, true)
+          }
+
+          /*
+           * CUSTOMER DOMAINS
+           */
+          const property = await Property.findOne({
+            $or: [{ domain: origin }, { allowedDomains: origin }],
+          }).lean()
+
+          if (property) {
+            return callback(null, true)
+          }
+
+          return callback(new Error('Origin not allowed'))
+        } catch (err) {
+          return callback(err as Error)
+        }
+      },
+
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+
       allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
     }),
   )
-  
+
   app.use(cookieParser())
   app.use(express.json())
 
-  // IMPORTANT: if behind proxy (Render, Railway, Nginx, etc.)
   app.set('trust proxy', 1)
 
   app.use('/api/v1', appRouter)
