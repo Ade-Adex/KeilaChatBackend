@@ -66,6 +66,14 @@ const NotificationSchema = new Schema<INotification>(
   { timestamps: true },
 )
 
+NotificationSchema.index(
+  {
+    expiresAt: 1,
+  },
+  {
+    expireAfterSeconds: 0,
+  },
+)
 NotificationSchema.index({ accountId: 1, status: 1 })
 
 export default model<INotification>('Notification', NotificationSchema)

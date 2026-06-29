@@ -9,7 +9,7 @@ import { NotificationService } from '../services/notification.service.js'
 /* -------------------------------- */
 
 export const getNotifications = async (req: Request, res: Response) => {
-  const accountId = String(req.params.accountId)
+  const accountId = (req as any).user.accountId
 
   const notifications =
     await NotificationService.getAccountNotifications(accountId)
@@ -25,7 +25,7 @@ export const getNotifications = async (req: Request, res: Response) => {
 /* -------------------------------- */
 
 export const getUnreadCount = async (req: Request, res: Response) => {
-  const accountId = String(req.params.accountId)
+  const accountId = (req as any).user.accountId
 
   const count = await NotificationService.getUnreadCount(accountId)
 

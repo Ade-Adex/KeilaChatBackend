@@ -91,5 +91,13 @@ const MessageSchema = new Schema<IMessage>(
 )
 
 MessageSchema.index({ sessionId: 1, createdAt: 1 })
+MessageSchema.index(
+  {
+    createdAt: 1,
+  },
+  {
+    expireAfterSeconds: 15552000,
+  },
+)
 
 export default model<IMessage>('Message', MessageSchema)

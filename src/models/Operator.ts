@@ -133,5 +133,14 @@ OperatorSchema.index(
     unique: true,
   },
 )
+OperatorSchema.index({
+  accountId: 1,
+  availabilityStatus: 1,
+  isOnline: 1,
+})
+
+OperatorSchema.index({
+  currentSessionId: 1,
+})
 
 export default model<IOperator>('Operator', OperatorSchema)

@@ -52,6 +52,10 @@ export interface IVisitor extends BaseEntity {
 
   lastSeen: Date
 
+  socketId: string
+
+  typing: boolean
+
   firstVisitAt?: Date
 
   pageViews: number

@@ -8,11 +8,17 @@ import {
   dismissNotification,
 } from '../../controllers/notification.controller.js'
 
+import { authMiddleware } from '../../middleware/auth.middleware.js'
+import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
+
 const router = Router()
 
-router.get('/account/:accountId', getNotifications)
+router.use(authMiddleware)
+router.use(tenantMiddleware)
 
-router.get('/account/:accountId/unread', getUnreadCount)
+router.get('/', getNotifications)
+
+router.get('/unread', getUnreadCount)
 
 router.patch('/:notificationId/read', markNotificationRead)
 

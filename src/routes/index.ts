@@ -12,6 +12,8 @@ import messageRouter from './v1/message.routes.js'
 import notificationRouter from './v1/notification.routes.js'
 import aiRouter from './v1/ai.routes.js'
 import accountRouter from './v1/account.routes.js' 
+import dashboardRouter from './v1/dashboard.routes.js'
+
 
 const router = Router()
 
@@ -27,7 +29,9 @@ router.use('/operators', operatorRouter)
 router.use('/chat', chatRoutes)
 router.use('/messages', messageRouter)
 router.use('/notifications', notificationRouter)
+router.use('/dashboard', dashboardRouter)
 router.use('/ai', aiRouter)
-router.use('/account', accountRouter) // 👈 ADD THIS
+router.use('/account', accountRouter) 
+
 
 export default router

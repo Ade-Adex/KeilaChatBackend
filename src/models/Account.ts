@@ -15,6 +15,7 @@ const AccountSchema = new Schema<IAccount>(
     ownerEmail: {
       type: String,
       required: true,
+      unique: true,
       lowercase: true,
       trim: true,
     },
@@ -45,6 +46,21 @@ const AccountSchema = new Schema<IAccount>(
       },
 
       totalVisitors: {
+        type: Number,
+        default: 0,
+      },
+
+      totalMessages: {
+        type: Number,
+        default: 0,
+      },
+
+      totalOperators: {
+        type: Number,
+        default: 0,
+      },
+
+      totalProperties: {
         type: Number,
         default: 0,
       },

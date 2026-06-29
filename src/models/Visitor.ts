@@ -50,7 +50,14 @@ const VisitorSchema = new Schema<IVisitor>(
       type: Number,
       default: 0,
     },
-    
+
+    socketId: String,
+
+    typing: {
+      type: Boolean,
+      default: false,
+    },
+
     lastTypingAt: Date,
 
     joinedAt: Date,

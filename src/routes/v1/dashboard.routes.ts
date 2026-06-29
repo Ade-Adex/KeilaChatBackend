@@ -8,7 +8,13 @@ import {
   getActiveChats,
 } from '../../controllers/dashboard.controller.js'
 
+import { authMiddleware } from '../../middleware/auth.middleware.js'
+import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
+
 const router = Router()
+
+router.use(authMiddleware)
+router.use(tenantMiddleware)
 
 router.get('/:propertyId/overview', getOverview)
 

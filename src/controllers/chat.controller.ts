@@ -133,7 +133,9 @@ export const leaveChat = catchAsync(
 export const transferSession = catchAsync(
   async (req: Request, res: Response): Promise<void> => {
     const sessionId = getParam(req.params.sessionId, 'Session ID')
-    const { fromOperatorId, toOperatorId } = req.body
+    const fromOperatorId = (req as any).user.userId
+
+    const { toOperatorId } = req.body
 
     const session = await transferChat(sessionId, fromOperatorId, toOperatorId)
 

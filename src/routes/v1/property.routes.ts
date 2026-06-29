@@ -21,6 +21,6 @@ router.get('/settings', rbac('admin'), getWebsiteSettings)
 
 router.put('/settings', rbac('admin'), updateWebsiteSettings)
 
-router.get('/:propertyId', getPropertyDetails)
+router.get('/:propertyId', authMiddleware, tenantMiddleware, getPropertyDetails)
 
 export default router

@@ -167,5 +167,22 @@ const ChatSessionSchema = new Schema<IChatSession>(
 )
 
 ChatSessionSchema.index({ propertyId: 1, status: 1 })
+ChatSessionSchema.index({
+  assignedOperatorId: 1,
+  status: 1,
+})
+
+ChatSessionSchema.index({
+  visitorId: 1,
+})
+
+ChatSessionSchema.index({
+  propertyId: 1,
+  queuePosition: 1,
+})
+
+ChatSessionSchema.index({
+  lastActivityAt: -1,
+})
 
 export default model<IChatSession>('ChatSession', ChatSessionSchema)

@@ -20,6 +20,9 @@ export interface AccountUsage {
   totalChats: number
   totalVisitors: number
   currentMonthMessages: number
+  totalMessages: number
+  totalOperators: number
+  totalProperties: number
 }
 
 export interface AccountSettings {
