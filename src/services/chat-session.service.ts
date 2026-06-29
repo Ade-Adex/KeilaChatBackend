@@ -245,7 +245,6 @@ export async function initializeChat(
   }
 }
 
-
 export async function closeChat(
   sessionId: string,
   closedBy: 'visitor' | 'operator' | 'system',
@@ -268,17 +267,16 @@ export async function closeChat(
 
   if (session.assignedOperatorId) {
     await Operator.updateOne(
-  {
-    _id: new Types.ObjectId(
-      session.assignedOperatorId.toString(),
-    ),
-  },
-  {
-    $inc: {
-      activeChatsCount: -1,
-    },
-  },
-)
+      {
+        _id: session.assignedOperatorId,
+        activeChatsCount: { $gt: 0 },
+      },
+      {
+        $inc: {
+          activeChatsCount: -1,
+        },
+      },
+    )
   }
 
   return session
@@ -313,7 +311,6 @@ export async function assignSessionToOperator(
   return session
 }
 
-
 // updateTypingStatus
 
 export async function updateTypingStatus(
@@ -331,7 +328,6 @@ export async function updateTypingStatus(
     },
   )
 }
-
 
 // addInternalNote
 // "Customer requested refund."
@@ -388,28 +384,31 @@ export async function operatorLeaveChat(sessionId: string, operatorId: string) {
     throw new AppError('Session not found', 404)
   }
 
+  const previousOperatorId = session.assignedOperatorId
+
   session.status = 'waiting'
   session.assignedOperatorId = null
 
   await session.save()
 
- await Operator.findOneAndUpdate(
-   {
-     _id: session.assignedOperatorId,
-     activeChatsCount: { $gt: 0 },
-   },
-   {
-     $inc: {
-       activeChatsCount: -1,
-     },
-   },
- )
+  if (previousOperatorId) {
+    await Operator.findOneAndUpdate(
+      {
+        _id: previousOperatorId,
+        activeChatsCount: { $gt: 0 },
+      },
+      {
+        $inc: {
+          activeChatsCount: -1,
+        },
+      },
+    )
+  }
 
   return session
 }
 
 // // Transfer chat to another agent
-
 
 export async function transferChat(
   sessionId: string,
@@ -423,13 +422,16 @@ export async function transferChat(
   }
 
   session.assignedOperatorId = new Types.ObjectId(toOperatorId)
-  session.transferredTo = new Types.ObjectId(toOperatorId) 
+  session.transferredTo = new Types.ObjectId(toOperatorId)
   session.status = 'active'
 
   await session.save()
 
   await Operator.updateOne(
-    { _id: fromOperatorId },
+    {
+      _id: fromOperatorId,
+      activeChatsCount: { $gt: 0 },
+    },
     {
       $inc: {
         activeChatsCount: -1,
@@ -462,7 +464,6 @@ export async function updateTyping(
   return ChatSession.findByIdAndUpdate(sessionId, update, { new: true })
 }
 
-
 // Session rating
 
 export async function rateSession(
@@ -483,4 +484,4 @@ export async function rateSession(
       new: true,
     },
   )
-  }
+}

@@ -8,7 +8,11 @@ import redisClient from '../config/redis.js'
 
 export class QueueService {
   static async addToQueue(propertyId: string, sessionId: string) {
-    await redisClient.rpush(`queue:${propertyId}`, sessionId)
+    const queue = await redisClient.lrange(`queue:${propertyId}`, 0, -1)
+
+    if (!queue.includes(sessionId)) {
+      await redisClient.rpush(`queue:${propertyId}`, sessionId)
+    }
 
     await redisClient.set(
       `queue:timestamp:${sessionId}`,

@@ -21,7 +21,13 @@ export class SessionService {
 
   static async getSession(sessionId: string) {
     const data = await redisClient.get(`${PREFIX}${sessionId}`)
-    return data ? JSON.parse(data) : null
+    if (!data) return null
+
+    try {
+      return JSON.parse(data)
+    } catch {
+      return null
+    }
   }
 
   static async deleteSession(sessionId: string) {

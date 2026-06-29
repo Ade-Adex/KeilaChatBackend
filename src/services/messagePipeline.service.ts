@@ -38,15 +38,17 @@ export class MessagePipeline {
       isFromAI,
     } = payload
 
-    const session = await ChatSession.findById(sessionId)
+    let session = await ChatSession.findById(sessionId)
 
     if (!session) {
       throw new AppError('Chat session not found', 404)
     }
 
     /*
+     ****************************************
      * STEP 1
      * Save message
+     ****************************************
      */
     const options: {
       messageType?: MessageType
@@ -69,72 +71,99 @@ export class MessagePipeline {
       options,
     )
 
-    // /*
-    //  * STEP 2
-    //  * Update session preview
-    //  */
-    // session.lastMessage = messageText
-    // session.lastMessageAt = new Date()
-
-    // await session.save()
+    /*
+     ****************************************
+     * STEP 2
+     * Send to dashboard
+     ****************************************
+     */
+    EventService.emitToProperty(propertyId, 'dashboard_message_update', {
+      sessionId,
+      message,
+    })
 
     /*
+     ****************************************
      * STEP 3
-     * Notify dashboard
+     * Auto assignment
+     ****************************************
      */
-    EventService.emitToProperty(
-      propertyId,
-      'dashboard_message_update',
-      {
+    if (senderType === 'visitor' && !session.assignedOperatorId) {
+      const operator = await AssignmentService.assignOperatorToSession(
+        propertyId,
         sessionId,
-        message,
-      },
-    )
+      )
+
+      /*
+       ********************************
+       * OPERATOR FOUND
+       ********************************
+       */
+      if (operator) {
+        session = await ChatSession.findById(sessionId)
+
+        /*
+         * notify assigned operator
+         */
+        EventService.emitToOperator(operator._id.toString(), 'chat_assigned', {
+          sessionId,
+          propertyId,
+          operatorId: operator._id,
+        })
+
+        /*
+         * VERY IMPORTANT:
+         * send first visitor message
+         */
+        EventService.emitToOperator(
+          operator._id.toString(),
+          'new_message',
+          message,
+        )
+
+        EventService.emitToProperty(propertyId, 'dashboard_chat_assigned', {
+          sessionId,
+          operatorId: operator._id,
+        })
+      } else {
+
+      /*
+       ********************************
+       * NO OPERATOR
+       ********************************
+       */
+        await QueueService.addToQueue(propertyId, sessionId)
+
+        await ChatSession.findByIdAndUpdate(sessionId, {
+          status: 'queued',
+        })
+
+        EventService.emitToProperty(propertyId, 'dashboard_chat_queued', {
+          sessionId,
+        })
+      }
+    } else if (senderType === 'visitor' && session.assignedOperatorId) {
 
     /*
- ****************************************
- * STEP 4
- * Auto assign operator
- ****************************************
- */
-if (senderType === 'visitor' && !session.assignedOperatorId) {
-  const operator = await AssignmentService.assignOperatorToSession(
-    propertyId,
-    sessionId,
-  )
-
-  if (operator) {
-    EventService.emitToOperator(operator._id.toString(), 'chat_assigned', {
-      sessionId,
-      propertyId,
-      operatorId: operator._id,
-    })
-
-    EventService.emitToProperty(propertyId, 'dashboard_chat_assigned', {
-      sessionId,
-      operatorId: operator._id,
-    })
-  } else {
-    await QueueService.addToQueue(propertyId, sessionId)
-
-    await ChatSession.findByIdAndUpdate(sessionId, {
-      status: 'queued',
-    })
-
-    EventService.emitToProperty(propertyId, 'dashboard_chat_queued', {
-      sessionId,
-    })
-  }
-}
-
-    /*
-     * STEP 5
-     * Future AI processing hook
+     ****************************************
+     * STEP 4
+     * Existing assigned operator
+     ****************************************
      */
-    if (
-      senderType === 'visitor' &&
-      session.aiEnabled
-    ) {
+      EventService.emitToOperator(
+        session.assignedOperatorId.toString(),
+        'new_message',
+        message,
+      )
+    }
+
+    /*
+     ****************************************
+     * STEP 5
+     * AI hook
+     ****************************************
+     */
+    if (senderType === 'visitor' && session?.aiEnabled) {
       // AIService.process(...)
     }
 

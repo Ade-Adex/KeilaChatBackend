@@ -62,7 +62,7 @@ export interface IMessage extends BaseEntity {
   seenAt?: Date
 
   readBy: {
-    operatorId?: string
+    operatorId: string
     readAt: Date
   }[]
 

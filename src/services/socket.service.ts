@@ -9,8 +9,12 @@ import { EventService } from './event.service.js'
 import { PresenceService } from './presence.service.js'
 
 import Operator from '../models/Operator.js'
+import ChatSession from '../models/ChatSession.js'
+import Message from '../models/Message.js'
 
-import { operatorJoined, operatorLeft } from './message.service.js'
+import {
+  operatorJoined,
+} from './message.service.js'
 
 import type {
   JoinChatPayload,
@@ -22,21 +26,16 @@ import type {
 
 import logger from '../bootstrap/logger.js'
 import { ENV } from '../config/env.js'
-import ChatSession from '../models/ChatSession.js'
 
 export class SocketService {
   private io: Server
 
   constructor(server: HttpServer) {
     this.io = new Server(server, {
-      // cors: {
-      //   origin: '*',
-      //   methods: ['GET', 'POST'],
-      //   credentials: true,
-      // },
       cors: {
         origin: ENV.BASE_URL,
         credentials: true,
+        methods: ['GET', 'POST'],
       },
     })
 
@@ -57,17 +56,37 @@ export class SocketService {
       socket.on(
         'join_property_dashboard',
         async ({ propertyId, operatorId }: JoinDashboardPayload) => {
-          if (!propertyId) return
+          try {
+            if (!propertyId) return
 
-          socket.join(`property:dashboard:${propertyId}`)
-          socket.join(`operator:${operatorId}`)
-          socket.data.operatorId = operatorId
+            console.log(
+              'JOIN DASHBOARD',
+              propertyId,
+              operatorId,
+            )
 
-          if (operatorId) {
-            await PresenceService.setOperatorOnline(operatorId, socket.id)
+            socket.join(`property:dashboard:${propertyId}`)
+
+            if (operatorId) {
+              socket.join(`operator:${operatorId}`)
+
+              socket.data.operatorId = operatorId
+
+              await PresenceService.setOperatorOnline(
+                operatorId,
+                socket.id,
+              )
+            }
+
+            logger.info(
+              `📊 Dashboard joined: ${propertyId}`,
+            )
+          } catch (error) {
+            logger.error(
+              error,
+              'join_property_dashboard failed',
+            )
           }
-
-          logger.info(`📊 Dashboard joined: ${propertyId}`)
         },
       )
 
@@ -76,157 +95,327 @@ export class SocketService {
        * JOIN CHAT SESSION
        ****************************************
        */
-      socket.on('join_chat_session', async (data: JoinChatPayload) => {
-        if (!data.sessionId) return
+      socket.on(
+        'join_chat_session',
+        async (data: JoinChatPayload) => {
+          try {
+            if (!data.sessionId) return
 
-        const room = `session:${data.sessionId}`
+            console.log(
+              'JOIN CHAT',
+              data.clientType,
+              data.sessionId,
+            )
 
-        socket.join(room)
+            const room = `session:${data.sessionId}`
 
-        if (data.visitorId) {
-          socket.join(`visitor:${data.visitorId}`)
-        }
+            socket.join(room)
 
-        if (data.visitorId) {
-          await PresenceService.setVisitorActive(data.visitorId, data.sessionId)
-        }
+            /*
+             ************************************
+             * VISITOR ROOM
+             ************************************
+             */
+            if (data.visitorId) {
+              socket.join(
+                `visitor:${data.visitorId}`,
+              )
 
+              await PresenceService.setVisitorActive(
+                data.visitorId,
+                data.sessionId,
+              )
+            }
 
-       if (data.clientType === 'operator' && data.operatorId) {
-       
-         const session = await ChatSession.findById(data.sessionId)
+            /*
+             ************************************
+             * OPERATOR ROOM
+             ************************************
+             */
+            const session =
+              await ChatSession.findById(
+                data.sessionId,
+              )
 
-         if (session) {
-           socket.join(`property:dashboard:${session.propertyId.toString()}`)
+            if (
+              data.clientType === 'operator' &&
+              data.operatorId &&
+              session
+            ) {
+              socket.join(
+                `property:dashboard:${session.propertyId.toString()}`,
+              )
 
-           socket.join(`operator:${data.operatorId}`)
+              socket.join(
+                `operator:${data.operatorId}`,
+              )
 
-           socket.data.operatorId = data.operatorId
+              socket.data.operatorId =
+                data.operatorId
 
-           await PresenceService.setOperatorOnline(data.operatorId, socket.id)
-         }
+              await PresenceService.setOperatorOnline(
+                data.operatorId,
+                socket.id,
+              )
 
-         /*
-          ****************************************
-          * Save proper operator name
-          ****************************************
-          */
-         const operator = await Operator.findById(data.operatorId)
+              /*
+               ************************************
+               * SEND CHAT HISTORY
+               ************************************
+               */
+              const messages =
+                await Message.find({
+                  sessionId: data.sessionId,
+                })
+                  .sort({
+                    createdAt: 1,
+                  })
+                  .lean()
 
-         if (operator) {
-           await operatorJoined(
-             data.sessionId,
-             `${operator.firstName} ${operator.lastName}`,
-           )
-         }
-       }
+              socket.emit(
+                'chat_history',
+                messages,
+              )
 
-        socket.to(room).emit('presence_notification', {
-          message: `${data.clientType} joined chat`,
-        })
+              /*
+               ************************************
+               * OPERATOR JOINED
+               ************************************
+               */
+              const operator =
+                await Operator.findById(
+                  data.operatorId,
+                )
 
-        logger.info(`💬 Joined session ${data.sessionId}`)
-      })
+              if (
+                operator &&
+                session.assignedOperatorId?.toString() ===
+                  data.operatorId
+              ) {
+                const systemMessage =
+                  await operatorJoined(
+                    data.sessionId,
+                    `${operator.firstName} ${operator.lastName}`,
+                  )
+
+                EventService.emitToSession(
+                  data.sessionId,
+                  'new_message',
+                  systemMessage,
+                )
+              }
+            }
+
+            socket.to(room).emit(
+              'presence_notification',
+              {
+                message: `${data.clientType} joined chat`,
+              },
+            )
+
+            logger.info(
+              `💬 Joined session ${data.sessionId}`,
+            )
+          } catch (error) {
+            logger.error(
+              error,
+              'join_chat_session failed',
+            )
+          }
+        },
+      )
 
       /*
        ****************************************
        * TYPING
        ****************************************
        */
-      socket.on('typing', (data: TypingPayload) => {
-        if (!data.sessionId) return
+      socket.on(
+        'typing',
+        (data: TypingPayload) => {
+          try {
+            if (!data.sessionId) return
 
-        socket.to(`session:${data.sessionId}`).emit('user_typing', {
-          senderName: data.senderName,
-          isTyping: data.isTyping,
-        })
-      })
+            socket
+              .to(
+                `session:${data.sessionId}`,
+              )
+              .emit('user_typing', {
+                senderName:
+                  data.senderName,
+                isTyping:
+                  data.isTyping,
+              })
+          } catch (error) {
+            logger.error(
+              error,
+              'typing failed',
+            )
+          }
+        },
+      )
 
       /*
        ****************************************
        * SEND MESSAGE
        ****************************************
        */
-      socket.on('send_message', async (data: SendMessagePayload) => {
-        try {
-          const message = await MessagePipeline.processMessage(data)
+      socket.on(
+        'send_message',
+        async (
+          data: SendMessagePayload,
+        ) => {
+          try {
+            console.log(
+              'SEND MESSAGE',
+              data.senderType,
+              data.sessionId,
+              data.messageText,
+            )
 
-          EventService.emitToSession(data.sessionId, 'new_message', message)
+            const message =
+              await MessagePipeline.processMessage(
+                data,
+              )
 
-          const session = await ChatSession.findById(data.sessionId)
-
-          if (session?.assignedOperatorId) {
-            EventService.emitToOperator(
-              session.assignedOperatorId.toString(),
+            /*
+             ************************************
+             * SESSION ROOM
+             ************************************
+             */
+            EventService.emitToSession(
+              data.sessionId,
               'new_message',
               message,
             )
-          }
 
-          socket.emit('message_delivered', {
-            messageId: message._id,
-            sessionId: data.sessionId,
-          })
+            /*
+             ************************************
+             * VISITOR ALERT
+             ************************************
+             */
+            if (
+              data.senderType ===
+              'visitor'
+            ) {
+              EventService.emitToProperty(
+                data.propertyId,
+                'incoming_visitor_alert',
+                {
+                  sessionId:
+                    data.sessionId,
+                  messageText:
+                    data.messageText,
+                },
+              )
 
-          if (data.senderType === 'visitor') {
-            EventService.emitToProperty(
-              data.propertyId,
-              'incoming_visitor_alert',
+              EventService.emitToProperty(
+                data.propertyId,
+                'dashboard_message_update',
+                {
+                  sessionId:
+                    data.sessionId,
+                  message,
+                },
+              )
+            }
+
+            /*
+             ************************************
+             * DELIVERY ACK
+             ************************************
+             */
+            socket.emit(
+              'message_delivered',
               {
-                sessionId: data.sessionId,
-                messageText: data.messageText,
+                messageId:
+                  message._id,
+                sessionId:
+                  data.sessionId,
+              },
+            )
+          } catch (error) {
+            logger.error(
+              error,
+              'Socket message processing failed',
+            )
+
+            socket.emit(
+              'message_error',
+              {
+                message:
+                  'Message processing failed',
               },
             )
           }
-        } catch (error) {
-          logger.error(error, 'Socket message processing failed')
-
-          socket.emit('message_error', {
-            message: 'Message processing failed',
-          })
-        }
-      })
+        },
+      )
 
       /*
        ****************************************
-       * JOIN NOTIFICATION ROOM
+       * JOIN NOTIFICATIONS
        ****************************************
        */
-      socket.on('join_notifications', ({ propertyId }: NotificationPayload) => {
-        if (!propertyId) return
+      socket.on(
+        'join_notifications',
+        ({
+          propertyId,
+        }: NotificationPayload) => {
+          if (!propertyId) return
 
-        socket.join(`property:dashboard:${propertyId}`)
+          socket.join(
+            `property:dashboard:${propertyId}`,
+          )
 
-        logger.info(`🔔 Notification room joined ${propertyId}`)
-      })
+          logger.info(
+            `🔔 Notification room joined ${propertyId}`,
+          )
+        },
+      )
 
       /*
        ****************************************
        * HEARTBEAT
        ****************************************
        */
-      socket.on('ping_server', () => {
-        socket.emit('pong_server')
-      })
+      socket.on(
+        'ping_server',
+        () => {
+          socket.emit(
+            'pong_server',
+          )
+        },
+      )
 
       /*
        ****************************************
        * DISCONNECT
        ****************************************
        */
-      socket.on('disconnect', async () => {
-        try {
-          const operatorId = socket.data.operatorId
+      socket.on(
+        'disconnect',
+        async () => {
+          try {
+            const operatorId =
+              socket.data.operatorId
 
-          if (operatorId) {
-            await PresenceService.setOperatorOffline(operatorId)
+            if (operatorId) {
+              await PresenceService.setOperatorOffline(
+                operatorId,
+              )
+            }
+
+            logger.info(
+              `❌ Disconnected: ${socket.id}`,
+            )
+          } catch (error) {
+            logger.error(
+              error,
+              'Disconnect failed',
+            )
           }
-
-          logger.info(`❌ Disconnected: ${socket.id}`)
-        } catch (error) {
-          logger.error(error, 'Disconnect failed')
-        }
-      })
+        },
+      )
     })
   }
 

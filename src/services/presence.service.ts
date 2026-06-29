@@ -13,6 +13,8 @@ export class PresenceService {
       socketId,
       lastSeen: Date.now(),
     })
+
+    await redisClient.expire(`operator:${operatorId}`, 300)
   }
 
   static async setOperatorOffline(operatorId: string) {

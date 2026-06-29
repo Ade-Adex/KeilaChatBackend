@@ -41,6 +41,15 @@
     })
 
     // Update analytics
+    session.analytics ??= {
+      totalMessages: 0,
+      visitorMessages: 0,
+      operatorMessages: 0,
+      aiMessages: 0,
+      averageReplyTime: 0,
+      duration: 0,
+    }
+
     session.analytics.totalMessages += 1
 
     switch (senderType) {
@@ -129,12 +138,15 @@
 
     message.status = 'seen'
 
-    if (operatorId) {
-      message.readBy.push({
-        operatorId,
-        readAt: new Date(),
-      })
-    }
+   if (
+     operatorId &&
+     !message.readBy.some((r) => r.operatorId.toString() === operatorId)
+   ) {
+     message.readBy.push({
+       operatorId,
+       readAt: new Date(),
+     })
+   }
 
     await message.save()
 
