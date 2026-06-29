@@ -8,6 +8,8 @@ import { MessagePipeline } from './messagePipeline.service.js'
 import { EventService } from './event.service.js'
 import { PresenceService } from './presence.service.js'
 
+import Operator from '../models/Operator.js'
+
 import { operatorJoined, operatorLeft } from './message.service.js'
 
 import type {
@@ -20,6 +22,7 @@ import type {
 
 import logger from '../bootstrap/logger.js'
 import { ENV } from '../config/env.js'
+import ChatSession from '../models/ChatSession.js'
 
 export class SocketService {
   private io: Server
@@ -57,6 +60,8 @@ export class SocketService {
           if (!propertyId) return
 
           socket.join(`property:dashboard:${propertyId}`)
+          socket.join(`operator:${operatorId}`)
+          socket.data.operatorId = operatorId
 
           if (operatorId) {
             await PresenceService.setOperatorOnline(operatorId, socket.id)
@@ -79,12 +84,42 @@ export class SocketService {
         socket.join(room)
 
         if (data.visitorId) {
+          socket.join(`visitor:${data.visitorId}`)
+        }
+
+        if (data.visitorId) {
           await PresenceService.setVisitorActive(data.visitorId, data.sessionId)
         }
 
-        if (data.clientType === 'operator' && data.operatorId) {
-          await operatorJoined(data.sessionId, data.operatorId)
-        }
+
+       if (data.clientType === 'operator' && data.operatorId) {
+       
+         const session = await ChatSession.findById(data.sessionId)
+
+         if (session) {
+           socket.join(`property:dashboard:${session.propertyId.toString()}`)
+
+           socket.join(`operator:${data.operatorId}`)
+
+           socket.data.operatorId = data.operatorId
+
+           await PresenceService.setOperatorOnline(data.operatorId, socket.id)
+         }
+
+         /*
+          ****************************************
+          * Save proper operator name
+          ****************************************
+          */
+         const operator = await Operator.findById(data.operatorId)
+
+         if (operator) {
+           await operatorJoined(
+             data.sessionId,
+             `${operator.firstName} ${operator.lastName}`,
+           )
+         }
+       }
 
         socket.to(room).emit('presence_notification', {
           message: `${data.clientType} joined chat`,
@@ -171,17 +206,15 @@ export class SocketService {
        */
       socket.on('disconnect', async () => {
         try {
-          for (const room of socket.rooms) {
-            if (room.startsWith('session:')) {
-              const sessionId = room.replace('session:', '')
+          const operatorId = socket.data.operatorId
 
-              // await operatorLeft(sessionId, 'Operator')
-            }
+          if (operatorId) {
+            await PresenceService.setOperatorOffline(operatorId)
           }
 
           logger.info(`❌ Disconnected: ${socket.id}`)
         } catch (error) {
-          logger.error(error, 'Disconnect handler failed')
+          logger.error(error, 'Disconnect failed')
         }
       })
     })

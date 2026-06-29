@@ -112,7 +112,7 @@ export async function acceptOperatorInvite(
   return operator
 }
 
-export async function getOperatorSessions(operatorId: string) {
+export async function getOperatorActiveSessions(operatorId: string) {
   return ChatSession.find({
     assignedOperatorId: operatorId,
     status: {
@@ -155,7 +155,14 @@ export async function getAvailableOperators(accountId: string) {
     availabilityStatus: 'online',
 
     $expr: {
-      $lt: ['$activeChatsCount', '$maxConcurrentChats'],
+      $lt: [
+        {
+          $ifNull: ['$activeChatsCount', 0],
+        },
+        {
+          $ifNull: ['$maxConcurrentChats', 5],
+        },
+      ],
     },
   })
     .select('-passwordHash -inviteToken')

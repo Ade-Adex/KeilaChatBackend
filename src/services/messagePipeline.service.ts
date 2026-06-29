@@ -5,6 +5,7 @@ import ChatSession from '../models/ChatSession.js'
 import { sendMessage } from './message.service.js'
 import { EventService } from './event.service.js'
 import { QueueService } from './queue.service.js'
+import { AssignmentService } from './assignment.service.js'
 
 import { AppError } from './appError.js'
 import type { MessageType } from '../types/message.types.js'
@@ -91,19 +92,67 @@ export class MessagePipeline {
     )
 
     /*
-     * STEP 4
-     * If visitor sends first message,
-     * ensure session is in queue
-     */
-    if (
-      senderType === 'visitor' &&
-      session.status === 'queued'
-    ) {
-      await QueueService.addToQueue(
-        propertyId,
+ ****************************************
+ * STEP 4
+ * Auto assign operator
+ ****************************************
+ */
+if (senderType === 'visitor') {
+  const operator =
+    await AssignmentService.assignOperatorToSession(
+      propertyId,
+      sessionId,
+    )
+
+  /*
+   * Operator found
+   */
+  if (operator) {
+    EventService.emitToOperator(
+      operator._id.toString(),
+      'chat_assigned',
+      {
         sessionId,
-      )
-    }
+        propertyId,
+        operatorId: operator._id,
+      },
+    )
+
+    EventService.emitToProperty(
+      propertyId,
+      'dashboard_chat_assigned',
+      {
+        sessionId,
+        operatorId: operator._id,
+      },
+    )
+  }
+
+  /*
+   * No operator available
+   */
+  else {
+    await QueueService.addToQueue(
+      propertyId,
+      sessionId,
+    )
+
+    await ChatSession.findByIdAndUpdate(
+      sessionId,
+      {
+        status: 'queued',
+      },
+    )
+
+    EventService.emitToProperty(
+      propertyId,
+      'dashboard_chat_queued',
+      {
+        sessionId,
+      },
+    )
+  }
+}
 
     /*
      * STEP 5

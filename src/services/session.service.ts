@@ -41,7 +41,7 @@ export async function getQueuedSessions(propertyId: string) {
     .populate('visitorId', 'name')
 }
 
-export async function getOperatorSessions(operatorId: string) {
+export async function getOperatorChatHistory(operatorId: string) {
   return ChatSession.find({
     assignedOperatorId: operatorId,
   })
@@ -111,34 +111,36 @@ export async function initiateVisitorSession({
   /*
    * Existing active session
    */
-  let session = await ChatSession.findOne({
-    propertyId: property._id,
+ const session = await ChatSession.findOneAndUpdate(
+   {
+     propertyId: property._id,
 
-    visitorId: visitor._id,
+     visitorId: visitor._id,
 
-    status: {
-      $in: ['waiting', 'queued', 'active'],
-    },
-  })
+     status: {
+       $in: ['waiting', 'queued', 'active'],
+     },
+   },
+   {
+     $setOnInsert: {
+       propertyId: property._id,
 
-  /*
-   * Create new session
-   */
-  if (!session) {
-    session = await ChatSession.create({
-      propertyId: property._id,
+       visitorId: visitor._id,
 
-      visitorId: visitor._id,
+       status: 'waiting',
 
-      status: 'waiting',
+       channel: 'widget',
 
-      channel: 'widget',
+       visitorJoinedAt: new Date(),
 
-      visitorJoinedAt: new Date(),
-
-      lastActivityAt: new Date(),
-    })
-  }
+       lastActivityAt: new Date(),
+     },
+   },
+   {
+     upsert: true,
+     new: true,
+   },
+ )
 
   return {
     sessionId: session._id.toString(),

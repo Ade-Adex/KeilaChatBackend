@@ -10,9 +10,9 @@ import {
   inviteOperatorToAccount,
   verifyOperatorInvite,
   acceptOperatorInvite,
-  getOperatorSessions,
   updateOperatorPresence,
   getAvailableOperators,
+  getOperatorActiveSessions,
 } from '../services/operator.service.js'
 
 /* -------------------------------------------------------------------------- */
@@ -166,7 +166,7 @@ export const getMySessions = catchAsync(
       return next(new AppError('Unauthorized', 401))
     }
 
-    const sessions = await getOperatorSessions(operatorId)
+    const sessions = await getOperatorActiveSessions(operatorId)
 
     return res.status(200).json({
       status: 'success',

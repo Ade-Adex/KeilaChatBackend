@@ -9,9 +9,9 @@ import {
   getSessionById,
   getActiveSessions,
   getQueuedSessions,
-  getOperatorSessions,
   getPropertySessions,
   initiateVisitorSession,
+  getOperatorChatHistory,
 } from '../services/session.service.js'
 
 function getParam(value: string | string[] | undefined, name: string): string {
@@ -67,7 +67,7 @@ export const operatorSessions = catchAsync(
   async (req: Request, res: Response): Promise<void> => {
     const operatorId = getParam(req.params.operatorId, 'Operator ID')
 
-    const sessions = await getOperatorSessions(operatorId)
+    const sessions = await getOperatorChatHistory(operatorId)
 
     res.status(200).json({
       status: 'success',

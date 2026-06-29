@@ -1,29 +1,53 @@
 // /src/services/assignment.service.ts
 
 import Operator from '../models/Operator.js'
-import { PresenceService } from './presence.service.js'
+import ChatSession from '../models/ChatSession.js'
+
+import { getAvailableOperators } from './operator.service.js'
 
 export class AssignmentService {
-  static async assignOperator(accountId: string) {
-    const operators = await Operator.find({
-      accountId,
-      status: 'active',
-    }).lean()
+  /**
+   * Assign operator to session
+   */
+  static async assignOperatorToSession(propertyId: string, sessionId: string) {
+    const operators = await getAvailableOperators(propertyId)
 
-    const onlineOperators = []
+    const operator = operators.at(0)
 
-    for (const op of operators) {
-      const isOnline = await PresenceService.isOperatorOnline(op._id.toString())
-      if (isOnline) onlineOperators.push(op)
+    if (!operator) {
+      return null
     }
 
-    if (onlineOperators.length === 0) return null
-
-    // sort by least load
-    onlineOperators.sort((a, b) => {
-      return (a.activeChatsCount || 0) - (b.activeChatsCount || 0)
+    await ChatSession.findByIdAndUpdate(sessionId, {
+      assignedOperatorId: operator._id,
+      status: 'active',
+      operatorJoinedAt: new Date(),
+      lastActivityAt: new Date(),
     })
 
-    return onlineOperators[0]
+    operator.activeChatsCount = (operator.activeChatsCount ?? 0) + 1
+
+    await operator.save()
+
+    return operator
+  }
+  /**
+   * Release operator after chat ends
+   */
+  static async releaseOperator(operatorId: string) {
+    const operator = await Operator.findById(operatorId)
+
+    if (!operator) {
+      return null
+    }
+
+    operator.activeChatsCount = Math.max(
+      0,
+      (operator.activeChatsCount ?? 0) - 1,
+    )
+
+    await operator.save()
+
+    return operator
   }
 }

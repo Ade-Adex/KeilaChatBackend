@@ -9,6 +9,13 @@ import redisClient from '../config/redis.js'
 export class QueueService {
   static async addToQueue(propertyId: string, sessionId: string) {
     await redisClient.rpush(`queue:${propertyId}`, sessionId)
+
+    await redisClient.set(
+      `queue:timestamp:${sessionId}`,
+      String(Date.now()),
+      'EX',
+      900,
+    )
   }
 
   static async getNext(propertyId: string) {
@@ -23,6 +30,10 @@ export class QueueService {
     const queue = await redisClient.lrange(`queue:${propertyId}`, 0, -1)
 
     return queue.indexOf(sessionId) + 1
+  }
+
+  static async removeFromQueue(propertyId: string, sessionId: string) {
+    await redisClient.lrem(`queue:${propertyId}`, 0, sessionId)
   }
 }
 

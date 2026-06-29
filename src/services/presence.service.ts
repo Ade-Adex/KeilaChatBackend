@@ -8,23 +8,42 @@ import redisClient from '../config/redis.js'
 
 export class PresenceService {
   static async setOperatorOnline(operatorId: string, socketId: string) {
-    await redisClient.set(`operator:socket:${operatorId}`, socketId)
-    await redisClient.set(`operator:online:${operatorId}`, 'true')
+    await redisClient.hset(`operator:${operatorId}`, {
+      status: 'online',
+      socketId,
+      lastSeen: Date.now(),
+    })
   }
 
   static async setOperatorOffline(operatorId: string) {
-    await redisClient.del(`operator:socket:${operatorId}`)
-    await redisClient.set(`operator:online:${operatorId}`, 'false')
+    await redisClient.hset(`operator:${operatorId}`, {
+      status: 'offline',
+      socketId: '',
+      lastSeen: Date.now(),
+    })
   }
 
   static async isOperatorOnline(operatorId: string) {
-    const status = await redisClient.get(`operator:online:${operatorId}`)
-    return status === 'true'
+    const status = await redisClient.hget(`operator:${operatorId}`, 'status')
+
+    return status === 'online'
+  }
+
+  static async setOperatorAway(operatorId: string) {
+    await redisClient.hset(`operator:${operatorId}`, {
+      status: 'away',
+      lastSeen: Date.now(),
+    })
+  }
+
+  static async getOperatorStatus(operatorId: string) {
+    return redisClient.hgetall(`operator:${operatorId}`)
   }
 
   static async getOperatorSocket(operatorId: string) {
-    return redisClient.get(`operator:socket:${operatorId}`)
+    return redisClient.hget(`operator:${operatorId}`, 'socketId')
   }
+
 
   static async setVisitorActive(visitorId: string, sessionId: string) {
     await redisClient.set(`visitor:session:${visitorId}`, sessionId)

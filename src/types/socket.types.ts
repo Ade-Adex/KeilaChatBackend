@@ -2,8 +2,13 @@
 
 export interface JoinChatPayload {
   sessionId: string
+
+  propertyId?: string
+
   visitorId?: string
+
   operatorId?: string
+
   clientType: 'visitor' | 'operator'
 }
 
