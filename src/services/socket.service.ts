@@ -122,19 +122,28 @@ export class SocketService {
 
       /*
        ****************************************
-       * TYPING
+       * TYPING EVENT PIPELINE (REVISED)
        ****************************************
        */
       socket.on('typing', (data: TypingPayload) => {
         try {
           if (!data.sessionId) return
 
+          // Explicitly determine the role acting on the conversation interface
+          const calculatedActor =
+            data.senderName?.toLowerCase() === 'visitor'
+              ? 'visitor'
+              : 'operator'
+
+          // Broadcast down to all connected sockets in the session room channel
           socket.to(`session:${data.sessionId}`).emit('user_typing', {
+            sessionId: data.sessionId,
             senderName: data.senderName,
             isTyping: data.isTyping,
+            actor: calculatedActor,
           })
         } catch (error) {
-          logger.error(error, 'typing failed')
+          logger.error(error, 'Real-time typing event routing pipeline crashed')
         }
       })
 
