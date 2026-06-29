@@ -143,12 +143,11 @@ export class MessagePipeline {
           operatorId: operator._id,
         })
       } else {
-
-      /*
-       ********************************
-       * NO OPERATOR
-       ********************************
-       */
+        /*
+         ********************************
+         * NO OPERATOR
+         ********************************
+         */
         await QueueService.addToQueue(propertyId, sessionId)
 
         await ChatSession.findByIdAndUpdate(sessionId, {
@@ -160,18 +159,18 @@ export class MessagePipeline {
         })
       }
     } else if (senderType === 'visitor' && session.assignedOperatorId) {
-
-    /*
-     ****************************************
-     * STEP 4
-     * Existing assigned operator
-     ****************************************
-     */
+      // 1. Direct Operator socket loop pipeline call
       EventService.emitToOperator(
         session.assignedOperatorId.toString(),
         'new_message',
         message,
       )
+
+      // 2. Dashboard status list data updating call
+      EventService.emitToProperty(propertyId, 'dashboard_message_update', {
+        sessionId,
+        message,
+      })
     }
 
     /*
