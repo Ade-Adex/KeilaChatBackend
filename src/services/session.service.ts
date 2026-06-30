@@ -6,6 +6,13 @@ import Visitor from '../models/Visitor.js'
 
 import { AppError } from './appError.js'
 
+interface PopulatedOperatorDoc {
+  _id: { toString(): string }
+  firstName?: string
+  lastName?: string
+  avatar?: string
+}
+
 export async function getSessionById(sessionId: string) {
   const session = await ChatSession.findById(sessionId)
     .populate({
@@ -140,12 +147,14 @@ export async function initiateVisitorSession({
     })
     .lean()
 
-  const operatorDoc = populatedSession?.assignedOperatorId as any
+  // Use type assertion to our strict interface instead of 'any'
+  const operatorDoc =
+    populatedSession?.assignedOperatorId as unknown as PopulatedOperatorDoc | null
   let customOperatorPayload = null
 
   if (operatorDoc) {
     customOperatorPayload = {
-      _id: operatorDoc._id,
+      _id: operatorDoc._id ? operatorDoc._id.toString() : '',
       firstName: operatorDoc.firstName || '',
       lastName: operatorDoc.lastName || '',
       avatar: operatorDoc.avatar || '',
