@@ -8,7 +8,14 @@ import { AppError } from './appError.js'
 
 export async function getSessionById(sessionId: string) {
   const session = await ChatSession.findById(sessionId)
-    .populate('assignedOperatorId', 'firstName lastName email avatar')
+    .populate({
+      path: 'assignedOperatorId',
+      select: 'firstName lastName email avatar accountId',
+      populate: {
+        path: 'accountId',
+        select: 'name', // Pulls the Account's name property cleanly
+      },
+    })
     .populate('visitorId', 'name email')
 
   if (!session) {
