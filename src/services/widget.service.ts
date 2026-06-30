@@ -7,6 +7,7 @@ import Visitor from '../models/Visitor.js'
 
 import { AppError } from './appError.js'
 import { normalizeDomain } from '../utils/domain.utils.js'
+import { generateVisitorTrackingId } from '../utils/visitor/identity.js'
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -154,38 +155,49 @@ export async function getOnlineOperatorCount(accountId: string) {
 /* Visitor Management                                                         */
 /* -------------------------------------------------------------------------- */
 
+
 export async function createOrUpdateVisitor(
   propertyId: string,
   visitorTrackingId?: string,
 ) {
-  if (!visitorTrackingId) {
+  try {
+    // 🎯 Use the clean utility helper if the tracking ID is invalid or missing
+    const trackingIdToUse =
+      visitorTrackingId &&
+      visitorTrackingId !== 'undefined' &&
+      visitorTrackingId.trim() !== ''
+        ? visitorTrackingId
+        : generateVisitorTrackingId()
+
+    const visitor = await Visitor.findOneAndUpdate(
+      {
+        propertyId,
+        visitorTrackingId: trackingIdToUse,
+      },
+      {
+        $inc: { pageViews: 1 },
+        $set: { lastSeen: new Date() },
+        $setOnInsert: {
+          name: 'Anonymous Visitor',
+          createdAt: new Date(),
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        lean: true,
+      },
+    )
+
+    return visitor
+  } catch (error) {
+    console.error(
+      '[KeilaChat Backend Error] createOrUpdateVisitor failed:',
+      error,
+    )
     return null
   }
-
-  const visitor = await Visitor.findOneAndUpdate(
-    {
-      propertyId,
-      visitorTrackingId,
-    },
-    {
-      $set: {
-        lastSeen: new Date(),
-      },
-
-      $setOnInsert: {
-        name: 'Anonymous Visitor',
-      },
-    },
-    {
-      upsert: true,
-      new: true,
-      setDefaultsOnInsert: true,
-    },
-  ).lean()
-
-  return visitor
 }
-
 /* -------------------------------------------------------------------------- */
 /* Widget Initialization                                                      */
 /* -------------------------------------------------------------------------- */
