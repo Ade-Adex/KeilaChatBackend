@@ -108,12 +108,13 @@ export async function initiateVisitorSession({
     throw new AppError('Visitor not found', 404)
   }
 
+  // ✅ FIXED: Checks active, waiting, queued, AND closed status to safely pull history
   const session = await ChatSession.findOneAndUpdate(
     {
       propertyId: property._id,
       visitorId: visitor._id,
       status: {
-        $in: ['waiting', 'queued', 'active'],
+        $in: ['waiting', 'queued', 'active', 'closed'],
       },
     },
     {
@@ -139,7 +140,6 @@ export async function initiateVisitorSession({
     })
     .lean()
 
-  // Extract human specific property references securely
   const operatorDoc = populatedSession?.assignedOperatorId as any
   let customOperatorPayload = null
 
