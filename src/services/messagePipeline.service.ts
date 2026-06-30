@@ -1,6 +1,7 @@
 // /src/services/messagePipeline.service.ts
 
 import ChatSession from '../models/ChatSession.js'
+import Operator from '../models/Operator.js' // 🎯 Added to retrieve live details
 
 import { sendMessage } from './message.service.js'
 import { EventService } from './event.service.js'
@@ -64,28 +65,48 @@ export class MessagePipeline {
       options,
     )
 
-    /*
-     ****************************************
-     * STEP 2: GLOBAL ROOM BROADCAST (CRITICAL FIX)
-     * This forces the socket server to broadcast the message to everyone
-     * inside `session:${sessionId}`, including the active visitor chat window!
-     ****************************************
-     */
-    EventService.emitToSession(sessionId, 'new_message', message)
+    // Convert the Mongoose document to a plain JavaScript object so we can add runtime fields safely
+    const messagePayload = message.toObject
+      ? message.toObject()
+      : { ...message }
 
     /*
      ****************************************
-     * STEP 3: Send to dashboard
+     * STEP 2: STAMP SENDER META DATA (CRITICAL VISITOR WINDOW FIXED)
+     * Here we look up the operator profile and attach fields directly to the event payload.
+     ****************************************
+     */
+    if (senderType === 'operator' && senderId) {
+      const activeOperator = await Operator.findById(senderId)
+        .select('firstName avatar')
+        .lean()
+      if (activeOperator) {
+        messagePayload.senderName = activeOperator.firstName || 'Support Agent'
+        messagePayload.senderAvatar = activeOperator.avatar || ''
+      }
+    }
+
+    /*
+     ****************************************
+     * STEP 3: GLOBAL ROOM BROADCAST
+     * Passes the custom populated message data to the visitor chat client window!
+     ****************************************
+     */
+    EventService.emitToSession(sessionId, 'new_message', messagePayload)
+
+    /*
+     ****************************************
+     * STEP 4: Send to dashboard
      ****************************************
      */
     EventService.emitToProperty(propertyId, 'dashboard_message_update', {
       sessionId,
-      message,
+      message: messagePayload,
     })
 
     /*
      ****************************************
-     * STEP 4: Auto assignment & Routing Loops
+     * STEP 5: Auto assignment & Routing Loops
      ****************************************
      */
     if (senderType === 'visitor' && !session.assignedOperatorId) {
@@ -97,10 +118,17 @@ export class MessagePipeline {
       if (operator) {
         session = await ChatSession.findById(sessionId)
 
+        // Fetch operator details for the assignment hook
+        const opDetails = await Operator.findById(operator._id)
+          .select('firstName lastName avatar')
+          .lean()
+
         EventService.emitToOperator(operator._id.toString(), 'chat_assigned', {
           sessionId,
           propertyId,
           operatorId: operator._id,
+          // 🎯 Send the complete populated sub-document to make frontend auto-updates work immediately
+          operator: opDetails,
         })
 
         const { PresenceService } = await import('./presence.service.js')
@@ -119,7 +147,7 @@ export class MessagePipeline {
         EventService.emitToOperator(
           operator._id.toString(),
           'new_message',
-          message,
+          messagePayload,
         )
 
         EventService.emitToProperty(propertyId, 'dashboard_chat_assigned', {
@@ -141,19 +169,10 @@ export class MessagePipeline {
       EventService.emitToOperator(
         session.assignedOperatorId.toString(),
         'new_message',
-        message,
+        messagePayload,
       )
     }
 
-    /*
-     ****************************************
-     * STEP 5: AI hook
-     ****************************************
-     */
-    if (senderType === 'visitor' && session?.aiEnabled) {
-      // AIService.process(...)
-    }
-
-    return message
+    return messagePayload
   }
 }

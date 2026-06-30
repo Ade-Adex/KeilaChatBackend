@@ -24,7 +24,6 @@ export interface MessageAttachment {
 
 export interface MessageReaction {
   emoji: string
-
   operatorId: string
 }
 
@@ -36,39 +35,31 @@ export interface AIMessageMetadata {
 
 export interface IMessage extends BaseEntity {
   sessionId: Types.ObjectId
-
   senderType: SenderType
-
   senderId: string
-
   messageText: string
-
   messageType: MessageType
-
   status: MessageStatus
-
   isFromAI: boolean
-
   aiMetadata?: AIMessageMetadata
-
   attachments: MessageAttachment[]
-
   replyTo?: Types.ObjectId
-
   reactions: MessageReaction[]
-
   deliveredAt?: Date
-
   seenAt?: Date
-
   readBy: {
     operatorId: string
     readAt: Date
   }[]
-
   editedAt?: Date
-
   deletedAt?: Date
-
   deletedBy?: string
+
+  /*
+   ****************************************
+   * 🎯 REAL-TIME PIPELINE PACKET INTERFACES
+   ****************************************
+   */
+  senderName?: string 
+  senderAvatar?: string 
 }
