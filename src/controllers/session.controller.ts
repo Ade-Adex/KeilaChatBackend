@@ -93,7 +93,8 @@ export const propertySessions = catchAsync(
 
 export const initiateSession = catchAsync(
   async (req: Request, res: Response): Promise<void> => {
-    const { widgetId, visitorTrackingId } = req.body
+    // 🎯 Accept the createNew parameter from your updated frontend action
+    const { widgetId, visitorTrackingId, createNew } = req.body
 
     if (!widgetId || !visitorTrackingId) {
       throw new AppError('widgetId and visitorTrackingId are required', 400)
@@ -102,6 +103,7 @@ export const initiateSession = catchAsync(
     const session = await initiateVisitorSession({
       widgetId,
       visitorTrackingId,
+      createNew: Boolean(createNew), // Safeguard type casting to boolean primitives
     })
 
     res.status(200).json({

@@ -98,9 +98,11 @@ export async function getClosedSessionCount(propertyId: string) {
 export async function initiateVisitorSession({
   widgetId,
   visitorTrackingId,
+  createNew = false,
 }: {
   widgetId: string
   visitorTrackingId: string
+  createNew?: boolean
 }) {
   const property = await Property.findOne({ widgetId })
   if (!property) {
@@ -115,14 +117,19 @@ export async function initiateVisitorSession({
     throw new AppError('Visitor not found', 404)
   }
 
-  // ✅ FIXED: Checks active, waiting, queued, AND closed status to safely pull history
+  const targetStatuses = createNew
+    ? ['waiting', 'queued', 'active']
+    : ['waiting', 'queued', 'active', 'closed']
+
+  // 🎯 FIX 1 & 2: Cast the query condition explicitly to avoid overload mismatches,
+  // and type-cast the response or read from `session` assuming it returns the document or type correctly.
   const session = await ChatSession.findOneAndUpdate(
     {
       propertyId: property._id,
       visitorId: visitor._id,
       status: {
-        $in: ['waiting', 'queued', 'active', 'closed'],
-      },
+        $in: targetStatuses,
+      } as any, // Cast to any bypassing complex schema internal strict type inference mismatches
     },
     {
       $setOnInsert: {
@@ -138,7 +145,14 @@ export async function initiateVisitorSession({
       upsert: true,
       new: true,
     },
-  )
+  ).lean() // Using .lean() here makes Mongoose return the plain document object directly instead of a ModifyResult shell!
+
+  if (!session) {
+    throw new AppError(
+      'Failed to initialize or find session mapping context',
+      500,
+    )
+  }
 
   const populatedSession = await ChatSession.findById(session._id)
     .populate({
@@ -147,7 +161,6 @@ export async function initiateVisitorSession({
     })
     .lean()
 
-  // Use type assertion to our strict interface instead of 'any'
   const operatorDoc =
     populatedSession?.assignedOperatorId as unknown as PopulatedOperatorDoc | null
   let customOperatorPayload = null
