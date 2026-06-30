@@ -132,23 +132,31 @@ export async function initiateVisitorSession({
     },
   )
 
-  // CRITICAL CORRECTION: Deeply fetch and populate the assigned operator along with their company Account details
   const populatedSession = await ChatSession.findById(session._id)
     .populate({
       path: 'assignedOperatorId',
       select: 'firstName lastName email avatar accountId',
-      populate: {
-        path: 'accountId',
-        select: 'name',
-      },
     })
     .lean()
+
+  // Extract human specific property references securely
+  const operatorDoc = populatedSession?.assignedOperatorId as any
+  let customOperatorPayload = null
+
+  if (operatorDoc) {
+    customOperatorPayload = {
+      _id: operatorDoc._id,
+      firstName: operatorDoc.firstName || '',
+      lastName: operatorDoc.lastName || '',
+      avatar: operatorDoc.avatar || '',
+    }
+  }
 
   return {
     sessionId: session._id.toString(),
     propertyId: session.propertyId.toString(),
     visitorId: session.visitorId.toString(),
     status: session.status,
-    assignedOperatorId: populatedSession?.assignedOperatorId || null, // <-- Appended to return body payload
+    assignedOperatorId: customOperatorPayload,
   }
 }
