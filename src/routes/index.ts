@@ -11,16 +11,15 @@ import chatRoutes from './v1/chat.routes.js'
 import messageRouter from './v1/message.routes.js'
 import notificationRouter from './v1/notification.routes.js'
 import aiRouter from './v1/ai.routes.js'
-import accountRouter from './v1/account.routes.js' 
+import accountRouter from './v1/account.routes.js'
 import dashboardRouter from './v1/dashboard.routes.js'
-
+import visitorRouter from './v1/visitor.routes.js' // 🎯 Added import
 
 const router = Router()
 
 router.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'API running' })
 })
-
 
 router.use('/auth', authRouter)
 router.use('/widget', widgetRouter)
@@ -32,6 +31,7 @@ router.use('/messages', messageRouter)
 router.use('/notifications', notificationRouter)
 router.use('/dashboard', dashboardRouter)
 router.use('/ai', aiRouter)
-router.use('/account', accountRouter) 
+router.use('/account', accountRouter)
+router.use('/visitors', visitorRouter) 
 
 export default router
