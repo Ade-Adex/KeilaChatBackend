@@ -12,17 +12,11 @@ import type { MessageType } from '../types/message.types.js'
 
 export interface ProcessMessagePayload {
   sessionId: string
-
   propertyId: string
-
   senderType: 'visitor' | 'operator' | 'ai' | 'system'
-
   senderId: string
-
   messageText: string
-
   messageType?: 'text' | 'image' | 'video' | 'audio' | 'file'
-
   isFromAI?: boolean
 }
 
@@ -46,8 +40,7 @@ export class MessagePipeline {
 
     /*
      ****************************************
-     * STEP 1
-     * Save message
+     * STEP 1: Save message to Database
      ****************************************
      */
     const options: {
@@ -73,8 +66,16 @@ export class MessagePipeline {
 
     /*
      ****************************************
-     * STEP 2
-     * Send to dashboard
+     * STEP 2: GLOBAL ROOM BROADCAST (CRITICAL FIX)
+     * This forces the socket server to broadcast the message to everyone
+     * inside `session:${sessionId}`, including the active visitor chat window!
+     ****************************************
+     */
+    EventService.emitToSession(sessionId, 'new_message', message)
+
+    /*
+     ****************************************
+     * STEP 3: Send to dashboard
      ****************************************
      */
     EventService.emitToProperty(propertyId, 'dashboard_message_update', {
@@ -84,8 +85,7 @@ export class MessagePipeline {
 
     /*
      ****************************************
-     * STEP 3
-     * Auto assignment
+     * STEP 4: Auto assignment & Routing Loops
      ****************************************
      */
     if (senderType === 'visitor' && !session.assignedOperatorId) {
@@ -94,27 +94,15 @@ export class MessagePipeline {
         sessionId,
       )
 
-      /*
-       ********************************
-       * OPERATOR FOUND
-       ********************************
-       */
       if (operator) {
         session = await ChatSession.findById(sessionId)
 
-        /*
-         * notify assigned operator
-         */
         EventService.emitToOperator(operator._id.toString(), 'chat_assigned', {
           sessionId,
           propertyId,
           operatorId: operator._id,
         })
 
-        /*
-         * FORCE OPERATOR SOCKET INTO SOCKET.IO SESSION ROOM
-         * This ensures they receive subsequent messages sent to the session room.
-         */
         const { PresenceService } = await import('./presence.service.js')
         const operatorSocketId = await PresenceService.getOperatorSocket(
           operator._id.toString(),
@@ -128,10 +116,6 @@ export class MessagePipeline {
           }
         }
 
-        /*
-         * VERY IMPORTANT:
-         * send first visitor message
-         */
         EventService.emitToOperator(
           operator._id.toString(),
           'new_message',
@@ -143,11 +127,6 @@ export class MessagePipeline {
           operatorId: operator._id,
         })
       } else {
-        /*
-         ********************************
-         * NO OPERATOR
-         ********************************
-         */
         await QueueService.addToQueue(propertyId, sessionId)
 
         await ChatSession.findByIdAndUpdate(sessionId, {
@@ -159,24 +138,16 @@ export class MessagePipeline {
         })
       }
     } else if (senderType === 'visitor' && session.assignedOperatorId) {
-      // 1. Direct Operator socket loop pipeline call
       EventService.emitToOperator(
         session.assignedOperatorId.toString(),
         'new_message',
         message,
       )
-
-      // 2. Dashboard status list data updating call
-      EventService.emitToProperty(propertyId, 'dashboard_message_update', {
-        sessionId,
-        message,
-      })
     }
 
     /*
      ****************************************
-     * STEP 5
-     * AI hook
+     * STEP 5: AI hook
      ****************************************
      */
     if (senderType === 'visitor' && session?.aiEnabled) {
