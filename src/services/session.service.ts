@@ -1,5 +1,4 @@
 // /src/services/session.service.ts
-
 import ChatSession from '../models/ChatSession.js'
 import Property from '../models/Property.js'
 import Visitor from '../models/Visitor.js'
@@ -20,7 +19,7 @@ export async function getSessionById(sessionId: string) {
       select: 'firstName lastName email avatar accountId',
       populate: {
         path: 'accountId',
-        select: 'name', // Pulls the Account's name property cleanly
+        select: 'name',
       },
     })
     .populate('visitorId', 'name email')
@@ -33,24 +32,24 @@ export async function getSessionById(sessionId: string) {
 }
 
 export async function getActiveSessions(propertyId: string) {
-  return ChatSession.find({
-    propertyId,
-    status: 'active',
-  })
-    .sort({
-      updatedAt: -1,
+  return (
+    ChatSession.find({
+      propertyId,
+      status: 'active',
     })
-    .populate('assignedOperatorId', 'firstName lastName')
-    .populate('visitorId', 'name')
+      .sort({
+        updatedAt: -1,
+      })
+      // 🎯 FIX: Added 'avatar' field context parsing inside your Active dashboard queries
+      .populate('assignedOperatorId', 'firstName lastName avatar')
+      .populate('visitorId', 'name')
+  )
 }
 
-/* -------------------------------------------------------------------------- */
-/* UPDATED: Catching both 'queued' and 'waiting' incoming stream states      */
-/* -------------------------------------------------------------------------- */
 export async function getQueuedSessions(propertyId: string) {
   return ChatSession.find({
     propertyId,
-    status: { $in: ['queued', 'waiting'] }, // <-- Changed to accept both variants
+    status: { $in: ['queued', 'waiting'] },
   })
     .sort({
       createdAt: 1,
@@ -69,14 +68,17 @@ export async function getOperatorChatHistory(operatorId: string) {
 }
 
 export async function getPropertySessions(propertyId: string) {
-  return ChatSession.find({
-    propertyId,
-  })
-    .sort({
-      createdAt: -1,
+  return (
+    ChatSession.find({
+      propertyId,
     })
-    .populate('assignedOperatorId', 'firstName lastName')
-    .populate('visitorId', 'name')
+      .sort({
+        createdAt: -1,
+      })
+      // 🎯 FIX: Added 'avatar' field context here as well to ensure fallback dashboard consistency
+      .populate('assignedOperatorId', 'firstName lastName avatar')
+      .populate('visitorId', 'name')
+  )
 }
 
 export async function getOpenSessionCount(propertyId: string) {
@@ -121,15 +123,13 @@ export async function initiateVisitorSession({
     ? ['waiting', 'queued', 'active']
     : ['waiting', 'queued', 'active', 'closed']
 
-  // 🎯 FIX 1 & 2: Cast the query condition explicitly to avoid overload mismatches,
-  // and type-cast the response or read from `session` assuming it returns the document or type correctly.
   const session = await ChatSession.findOneAndUpdate(
     {
       propertyId: property._id,
       visitorId: visitor._id,
       status: {
         $in: targetStatuses,
-      } as any, // Cast to any bypassing complex schema internal strict type inference mismatches
+      } as any,
     },
     {
       $setOnInsert: {
@@ -145,7 +145,7 @@ export async function initiateVisitorSession({
       upsert: true,
       new: true,
     },
-  ).lean() // Using .lean() here makes Mongoose return the plain document object directly instead of a ModifyResult shell!
+  ).lean()
 
   if (!session) {
     throw new AppError(
@@ -167,6 +167,7 @@ export async function initiateVisitorSession({
 
   if (operatorDoc) {
     customOperatorPayload = {
+      // Clean string mutations fallback verification handling
       _id: operatorDoc._id ? operatorDoc._id.toString() : '',
       firstName: operatorDoc.firstName || '',
       lastName: operatorDoc.lastName || '',
