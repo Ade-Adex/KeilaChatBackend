@@ -112,35 +112,37 @@ export class SocketService {
 
             socket.emit('chat_history', messages)
 
-            // 🎯 Operator opened session window: mark incoming visitor messages as seen
-            await markAllSeenInSession(
-              data.sessionId,
-              'visitor',
-              data.operatorId,
-            )
-            this.io
-              .to(room)
-              .emit('messages_seen', {
+            // 🎯 DELIBERATE SAFETY CHECK: Only issue an automated read receipt on room entrance
+            // if there are actually active unseen elements, preventing blank race loops.
+            if (session.unreadOperator > 0) {
+              await markAllSeenInSession(
+                data.sessionId,
+                'visitor',
+                data.operatorId,
+              )
+              this.io.to(room).emit('messages_seen', {
                 sessionId: data.sessionId,
                 reader: 'operator',
               })
 
-            // Notify active dashboard tabs to clear unread counts
-            this.io
-              .to(`property:dashboard:${session.propertyId}`)
-              .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
+              this.io
+                .to(`property:dashboard:${session.propertyId}`)
+                .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
+            }
           }
 
-          if (data.clientType === 'visitor') {
-            // 🎯 Visitor opened window: mark incoming operator and AI messages as seen
-            await markAllSeenInSession(data.sessionId, 'operator')
-            await markAllSeenInSession(data.sessionId, 'ai')
-            this.io
-              .to(room)
-              .emit('messages_seen', {
-                sessionId: data.sessionId,
-                reader: 'visitor',
-              })
+          if (data.clientType === 'visitor' && session) {
+            // 🎯 FIX: DO NOT automatically call markAllSeenInSession here.
+            // Let ClientChatWrapper handle triggering read status explicitly via 'mark_session_seen' when open === true.
+
+            // However, if the visitor is online and connecting, any pending operator message can safely be marked delivered.
+            await markAllDelivered(data.sessionId, 'operator')
+            await markAllDelivered(data.sessionId, 'ai')
+
+            this.io.to(room).emit('messages_delivered_bulk', {
+              sessionId: data.sessionId,
+              senderType: 'operator',
+            })
           }
 
           socket.to(room).emit('presence_notification', {
