@@ -5,6 +5,7 @@ import { catchAsync } from '../config/errorHandler.js'
 import Account from '../models/Account.js'
 import Operator from '../models/Operator.js'
 import { AppError } from '../services/appError.js'
+import type { AuthRequest } from '../middleware/auth.middleware.js'
 
 /* -------------------------------------------------------------------------- */
 /*                             GET WORKSPACE                                 */
@@ -37,7 +38,7 @@ export const getWorkspace = catchAsync(async (req: Request, res: Response) => {
 
 export const updateWorkspace = catchAsync(
   async (req: Request, res: Response) => {
-    const accountId = (req as any).user?.accountId
+    const accountId = (req as AuthRequest).user?.accountId
     const { companyName } = req.body
 
     if (!accountId) {
@@ -56,8 +57,9 @@ export const updateWorkspace = catchAsync(
 
     await account.save()
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
+      message: 'Workspace details updated successfully',
       data: {
         account,
       },

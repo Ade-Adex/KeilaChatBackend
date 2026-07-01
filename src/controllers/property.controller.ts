@@ -43,6 +43,7 @@ export const updateWebsiteSettings = catchAsync(
 
     res.status(200).json({
       success: true,
+      message: 'Website settings updated successfully',
       data: {
         property,
       },
