@@ -99,7 +99,7 @@ export const updateVisitorProfile = catchAsync(
 
     res.status(200).json({
       success: true,
-      message: 'Visitor profile updated successfully',
+      message: 'Your profile details have been saved.',
       data: currentVisitor,
     })
   },
