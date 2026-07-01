@@ -15,9 +15,37 @@ export const updateVisitorProfile = catchAsync(
       return next(new AppError('Missing tracking parameters', 400))
     }
 
+    if (!name || !email) {
+      return next(new AppError('Name and email are required', 400))
+    }
+
+    const cleanEmail = email.trim().toLowerCase()
+
+    /* -------------------------------------------------------------------------- */
+    /* PREVENT EMAIL DUPLICATION                            */
+    /* -------------------------------------------------------------------------- */
+    // Check if another visitor profile on this specific property is already using this email
+    const emailConflict = await Visitor.findOne({
+      propertyId,
+      email: cleanEmail,
+      visitorTrackingId: { $ne: visitorTrackingId }, // Exclude the current visitor making the request
+    })
+
+    if (emailConflict) {
+      return next(
+        new AppError(
+          'This email address is already in use by another session.',
+          400,
+        ),
+      )
+    }
+
+    /* -------------------------------------------------------------------------- */
+    /* UPDATE VISITOR PROFILE                              */
+    /* -------------------------------------------------------------------------- */
     const visitor = await Visitor.findOneAndUpdate(
       { visitorTrackingId, propertyId },
-      { name: name.trim(), email: email.trim().toLowerCase() },
+      { name: name.trim(), email: cleanEmail },
       { new: true },
     )
 
@@ -25,6 +53,9 @@ export const updateVisitorProfile = catchAsync(
       return next(new AppError('Visitor profile map not found', 404))
     }
 
+    /* -------------------------------------------------------------------------- */
+    /* EMIT CHANGES TO DASHBOARD                           */
+    /* -------------------------------------------------------------------------- */
     const activeSession = await ChatSession.findOne({
       visitorId: visitor._id,
       status: { $in: ['active', 'queued', 'waiting'] },
@@ -39,8 +70,10 @@ export const updateVisitorProfile = catchAsync(
       })
     }
 
+    // Following your JSend-style uniform payload convention
     res.status(200).json({
-      status: 'success',
+      success: true,
+      message: 'Visitor profile updated successfully',
       data: visitor,
     })
   },
