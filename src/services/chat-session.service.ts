@@ -334,7 +334,6 @@ export async function updateTypingStatus(
   )
 }
 
-// addInternalNote
 // "Customer requested refund."
 
 export async function addInternalNote(

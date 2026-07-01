@@ -170,3 +170,72 @@
   export async function operatorLeft(sessionId: string, operatorName: string) {
     return createSystemMessage(sessionId, `${operatorName} left the chat`)
   }
+
+
+
+  // Mark all unread messages from a specific sender type as delivered
+export async function markAllDelivered(sessionId: string,senderType: 'visitor' | 'operator' | 'ai',) {
+  await Message.updateMany(
+    {
+      sessionId,
+      senderType,
+      status: 'sent'
+    },
+    {
+      $set: {
+        status: 'delivered',
+        deliveredAt: new Date()
+      }
+    }
+  )
+}
+
+// Mark all unread messages from a specific sender type as seen/read
+export async function markAllSeenInSession(sessionId: string,senderType: 'visitor' | 'operator' | 'ai', operatorId?: string) {
+  const updateFields: any = {
+    status: 'seen',
+    seenAt: new Date()
+  }
+
+  // If an operator is the one reading visitor messages, keep track of who read it
+  if (operatorId && senderType === 'visitor') {
+    await Message.updateMany(
+      {
+        sessionId,
+        senderType,
+        status: { $ne: 'seen' },
+        'readBy.operatorId': { $ne: operatorId }
+      },
+      {
+        $set: updateFields,
+        $push: {
+          readBy: {
+            operatorId,
+            readAt: new Date()
+          }
+        }
+      }
+    )
+  } else {
+    // If visitor is reading operator/ai messages
+    await Message.updateMany(
+      {
+        sessionId,
+        senderType,
+        status: { $ne: 'seen' }
+      },
+      {
+        $set: updateFields
+      }
+    )
+  }
+
+  // Reset counters inside the ChatSession collection
+  if (senderType === 'operator' || senderType === 'ai') {
+    // Visitor read operator messages -> clear unreadVisitor
+    await ChatSession.findByIdAndUpdate(sessionId, { $set: { unreadVisitor: 0 } })
+  } else if (senderType === 'visitor') {
+    // Operator read visitor messages -> clear unreadOperator
+    await ChatSession.findByIdAndUpdate(sessionId, { $set: { unreadOperator: 0 } })
+  }
+}
