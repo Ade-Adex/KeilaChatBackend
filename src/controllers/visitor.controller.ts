@@ -2,6 +2,8 @@
 
 import type { Request, Response, NextFunction } from 'express'
 import Visitor from '../models/Visitor.js'
+import Operator from '../models/Operator.js'
+import Property from '../models/Property.js'
 import ChatSession from '../models/ChatSession.js'
 import { EventService } from '../services/event.service.js'
 import { catchAsync } from '../config/errorHandler.js'
@@ -21,17 +23,48 @@ export const updateVisitorProfile = catchAsync(
 
     const cleanEmail = email.trim().toLowerCase()
 
-    /* -------------------------------------------------------------------------- */
-    /* PREVENT EMAIL DUPLICATION                            */
-    /* -------------------------------------------------------------------------- */
-    // Check if another visitor profile on this specific property is already using this email
-    const emailConflict = await Visitor.findOne({
+    // 1. Fetch the property setup to accurately identify the tenant workspace (accountId)
+    const property = await Property.findById(propertyId)
+    if (!property) {
+      return next(new AppError('Target property channel not found', 404))
+    }
+
+    // 2. Fetch current visitor to verify their existence
+    const currentVisitor = await Visitor.findOne({
+      visitorTrackingId,
       propertyId,
+    })
+    if (!currentVisitor) {
+      return next(new AppError('Visitor profile map not found', 404))
+    }
+
+    /* -------------------------------------------------------------------------- */
+    /* ENFORCE EMAIL UNIQUE RULES (ACROSS OTHER VISITORS & TENANT OPERATORS)      */
+    /* -------------------------------------------------------------------------- */
+
+    // Check A: Is this email claimed by an agent/admin inside this workspace tenant ecosystem?
+    const operatorConflict = await Operator.findOne({
+      accountId: property.accountId, // 🎯 Solved: Safely checking through the property metadata wrapper
       email: cleanEmail,
-      visitorTrackingId: { $ne: visitorTrackingId }, // Exclude the current visitor making the request
     })
 
-    if (emailConflict) {
+    if (operatorConflict) {
+      return next(
+        new AppError(
+          'This email is registered to a support agent and cannot be used as a visitor identity.',
+          400,
+        ),
+      )
+    }
+
+    // Check B: Is this email claimed by another distinct visitor profile under this chat widget?
+    const visitorConflict = await Visitor.findOne({
+      propertyId,
+      email: cleanEmail,
+      visitorTrackingId: { $ne: visitorTrackingId },
+    })
+
+    if (visitorConflict) {
       return next(
         new AppError(
           'This email address is already in use by another session.',
@@ -41,40 +74,33 @@ export const updateVisitorProfile = catchAsync(
     }
 
     /* -------------------------------------------------------------------------- */
-    /* UPDATE VISITOR PROFILE                              */
+    /* SAFE RE-ASSIGNMENT WRITE                                                   */
     /* -------------------------------------------------------------------------- */
-    const visitor = await Visitor.findOneAndUpdate(
-      { visitorTrackingId, propertyId },
-      { name: name.trim(), email: cleanEmail },
-      { new: true },
-    )
-
-    if (!visitor) {
-      return next(new AppError('Visitor profile map not found', 404))
-    }
+    currentVisitor.name = name.trim()
+    currentVisitor.email = cleanEmail
+    await currentVisitor.save()
 
     /* -------------------------------------------------------------------------- */
-    /* EMIT CHANGES TO DASHBOARD                           */
+    /* EMIT CHANGES TO LIVE DASHBOARDS                                            */
     /* -------------------------------------------------------------------------- */
     const activeSession = await ChatSession.findOne({
-      visitorId: visitor._id,
+      visitorId: currentVisitor._id,
       status: { $in: ['active', 'queued', 'waiting'] },
     })
 
     if (activeSession) {
       EventService.emitToProperty(propertyId, 'dashboard_visitor_updated', {
         sessionId: activeSession._id,
-        visitorId: visitor._id,
-        name: visitor.name,
-        email: visitor.email,
+        visitorId: currentVisitor._id,
+        name: currentVisitor.name,
+        email: currentVisitor.email,
       })
     }
 
-    // Following your JSend-style uniform payload convention
     res.status(200).json({
       success: true,
       message: 'Visitor profile updated successfully',
-      data: visitor,
+      data: currentVisitor,
     })
   },
 )

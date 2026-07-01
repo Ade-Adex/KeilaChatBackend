@@ -11,6 +11,8 @@ import { normalizeDomain } from '../utils/domain.utils.js'
 import logger from '../bootstrap/logger.js'
 import { generatePropertyCredentials } from '../utils/property/credentials.js'
 import { sendPasswordResetEmail } from '../lib/email.js'
+import { AppError } from './appError.js'
+import Visitor from '../models/Visitor.js'
 
 type OperatorRole = 'admin' | 'supervisor' | 'agent'
 
@@ -23,35 +25,58 @@ export class AuthService {
     email: string
     password: string
   }) {
-    const existing = await Account.findOne({ ownerEmail: data.email })
-    if (existing) throw new Error('Account already exists')
+    const cleanEmail = data.email.trim().toLowerCase()
+
+    // Check 1: Does an account already exist with this owner email?
+    const existingAccount = await Account.findOne({ ownerEmail: cleanEmail })
+    if (existingAccount) {
+      throw new AppError(
+        'An account with this email address already exists.',
+        400,
+      )
+    }
+
+    // Check 2: Is this email already taken by an operator/agent elsewhere?
+    const existingOperator = await Operator.findOne({ email: cleanEmail })
+    if (existingOperator) {
+      throw new AppError(
+        'This email is already registered to a workspace operator.',
+        400,
+      )
+    }
+
+    // Check 3: Is this email currently attached to an active visitor session? 🎯
+    const existingVisitor = await Visitor.findOne({ email: cleanEmail })
+    if (existingVisitor) {
+      throw new AppError(
+        'This email is currently active as a chat visitor profile.',
+        400,
+      )
+    }
 
     const account = await Account.create({
       name: data.name,
-      ownerEmail: data.email,
-
+      ownerEmail: cleanEmail,
       plan: 'free',
-
       isActive: true,
-
       settings: {
         aiEnabled: true,
         maxOperators: 5,
         maxVisitors: 1000,
       },
-
       usage: {
         totalChats: 0,
         totalVisitors: 0,
         currentMonthMessages: 0,
       },
     })
+
     const passwordHash = await hashPassword(data.password)
 
     const owner = await Operator.create({
       accountId: account._id,
 
-      email: data.email,
+      email: cleanEmail,
 
       passwordHash,
 
@@ -295,29 +320,29 @@ export class AuthService {
     if (!property) {
       const credentials = generatePropertyCredentials()
 
-    property = await Property.create({
-      accountId: operator.accountId,
+      property = await Property.create({
+        accountId: operator.accountId,
 
-      name: data.propertyName ?? data.companyName ?? 'My Website',
+        name: data.propertyName ?? data.companyName ?? 'My Website',
 
-      domain: normalizedDomain ?? '',
+        domain: normalizedDomain ?? '',
 
-      allowedDomains:
-        (data.allowedDomains
-          ?.map((d) => normalizeDomain(d))
-          .filter(Boolean) as string[]) || [],
+        allowedDomains:
+          (data.allowedDomains
+            ?.map((d) => normalizeDomain(d))
+            .filter(Boolean) as string[]) || [],
 
-      widgetId: credentials.widgetId,
+        widgetId: credentials.widgetId,
 
-      apiKey: credentials.apiKey,
+        apiKey: credentials.apiKey,
 
-      details:
-        data.companyLogo !== undefined
-          ? {
-              logoUrl: data.companyLogo,
-            }
-          : {},
-    })
+        details:
+          data.companyLogo !== undefined
+            ? {
+                logoUrl: data.companyLogo,
+              }
+            : {},
+      })
     } else {
       if (data.propertyName !== undefined) {
         property.name = data.propertyName
