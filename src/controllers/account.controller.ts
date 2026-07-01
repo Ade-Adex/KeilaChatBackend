@@ -41,11 +41,16 @@ export const updateWorkspace = catchAsync(
     const accountId = (req as AuthRequest).user?.accountId
     const { companyName } = req.body
 
+
+    // console.log("Body", req.body)
+    // console.log("companyName", companyName)
+
     if (!accountId) {
       throw new AppError('Unauthorized workspace update', 401)
     }
 
     const account = await Account.findById(accountId)
+
 
     if (!account) {
       throw new AppError('Workspace not found', 404)
