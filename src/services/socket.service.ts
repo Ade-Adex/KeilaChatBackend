@@ -335,61 +335,71 @@ export class SocketService {
        * 🎯 NEW: CHAT TRANSFER AGENT PIPELINE
        ****************************************
        */
-      socket.on(
-        'transfer_chat_session',
-        async (data: { sessionId: string; targetOperatorId: string }) => {
-          try {
-            if (!data.sessionId || !data.targetOperatorId) return
+     socket.on(
+       'transfer_chat_session',
+       async (data: { sessionId: string; targetOperatorId: string }) => {
+         try {
+           if (!data.sessionId || !data.targetOperatorId) return
 
-            // 1. Update the session assignment on the database layer
-            const updatedSession = await ChatSession.findByIdAndUpdate(
-              data.sessionId,
-              {
-                assignedOperatorId: data.targetOperatorId,
-                status: 'active', // Ensure it keeps its active tracking flags
-              },
-              { new: true },
-            )
+           // 1. Fetch the incoming new assigned operator profile details
+           const newOperator = await Operator.findById(data.targetOperatorId)
+             .select('firstName lastName avatar')
+             .lean()
+           if (!newOperator) return
 
-            if (!updatedSession) return
+           // 2. Update the session assignment on the database layer
+           const updatedSession = await ChatSession.findByIdAndUpdate(
+             data.sessionId,
+             {
+               assignedOperatorId: data.targetOperatorId,
+               status: 'active',
+             },
+             { new: true },
+           )
 
-            const room = `session:${data.sessionId}`
+           if (!updatedSession) return
 
-            // 2. Lookup the details of the incoming new assigned operator profile
-            const newOperator = await Operator.findById(data.targetOperatorId)
-              .select('firstName avatar')
-              .lean()
+           const room = `session:${data.sessionId}`
+           const transferText =
+             `Chat was transferred to ${newOperator.firstName} ${newOperator.lastName || ''}`.trim()
 
-            if (newOperator) {
-              // 3. System notice layout event emission into the message stream log channel
-              this.io.to(room).emit('presence_notification', {
-                message: `Chat was transferred to ${newOperator.firstName || 'Support Agent'}`,
-              })
+           // 🎯 3. SAVE THE SYSTEM NOTICE PERMANENTLY IN THE DATABASE
+           // Adjust model name "Message" matching your actual database schema
+           const systemMessage = await Message.create({
+             sessionId: data.sessionId,
+             senderType: 'system',
+             senderId: 'system',
+             messageText: transferText,
+             messageType: 'text',
+             status: 'seen',
+             createdAt: new Date(),
+           })
 
-              // 4. Tell the new operator's socket connection workspace room map to join the session
-              this.io
-                .to(`operator:${data.targetOperatorId}`)
-                .emit('chat_assigned', {
-                  sessionId: data.sessionId,
-                  propertyId: updatedSession.propertyId,
-                  operatorId: data.targetOperatorId,
-                  operator: newOperator,
-                })
-            }
+           // 4. Broadcast the actual message object to everyone in the room (including the visitor)
+           this.io.to(room).emit('new_message', systemMessage)
 
-            // 5. Notify the property dashboards across all operators to dynamically reposition sidebars
-            this.io
-              .to(`property:dashboard:${updatedSession.propertyId.toString()}`)
-              .emit('dashboard_refresh_request')
-          } catch (error) {
-            logger.error(
-              error,
-              'Failed to complete chat session transfer execution routing',
-            )
-          }
-        },
-      )
+           // 5. Tell the new operator's specific layout stream to join the session
+           this.io
+             .to(`operator:${data.targetOperatorId}`)
+             .emit('chat_assigned', {
+               sessionId: data.sessionId,
+               propertyId: updatedSession.propertyId,
+               operatorId: data.targetOperatorId,
+               operator: newOperator,
+             })
 
+           // 6. Notify the property dashboards across all operators to dynamically reposition sidebars
+           this.io
+             .to(`property:dashboard:${updatedSession.propertyId.toString()}`)
+             .emit('dashboard_refresh_request')
+         } catch (error) {
+           logger.error(
+             error,
+             'Failed to complete chat session transfer execution routing',
+           )
+         }
+       },
+     )
       /* -------------------------------------------------- */
       /* DISCONNECT STATE                                   */
       /* -------------------------------------------------- */
