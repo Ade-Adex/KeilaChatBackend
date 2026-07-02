@@ -18,6 +18,7 @@ import {
 const router = Router()
 
 router.post('/initiate', initiateSession)
+router.patch('/:sessionId/close', closeSession)
 
 router.use(authMiddleware)
 router.use(tenantMiddleware)
@@ -33,6 +34,5 @@ router.get('/property/:propertyId', propertySessions)
 
 router.get('/:sessionId', getSession)
 
-router.patch('/:sessionId/close', closeSession)
 
 export default router
