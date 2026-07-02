@@ -146,6 +146,7 @@ export class AuthService {
     }
 
     operator.isOnline = true
+    operator.availabilityStatus = 'online'
 
     await operator.save()
 
