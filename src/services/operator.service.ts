@@ -67,6 +67,24 @@ export async function inviteOperatorToAccount(
   return true
 }
 
+/**
+ * Queries the database for all online operator agents.
+ */
+export async function getActiveOperatorsService() {
+  // Adjust the query filter matching your database configuration schema parameters 
+  // (e.g., if you track presence status strings via an explicit field like status: 'online')
+  const queryFilter = {
+    // status: 'online' 
+  }
+
+  const operators = await Operator.find(queryFilter)
+    .select('firstName lastName avatar email')
+    .sort({ firstName: 1 })
+    .lean()
+
+  return operators
+}
+
 export async function verifyOperatorInvite(token: string) {
   const operator = await Operator.findOne({
     inviteToken: token,

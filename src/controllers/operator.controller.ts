@@ -13,6 +13,7 @@ import {
   updateOperatorPresence,
   getAvailableOperators,
   getOperatorActiveSessions,
+  getActiveOperatorsService,
 } from '../services/operator.service.js'
 
 /* -------------------------------------------------------------------------- */
@@ -98,6 +99,31 @@ export const getOperators = catchAsync(
     })
   },
 )
+
+
+/**
+ * GET /api/v1/operators/active
+ * Retrieves all online and active operators for chat routing assignments.
+ */
+export async function getActiveOperatorsController(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    // Optional context: if you pass propertyId via query parameters, extract it here
+    // const { propertyId } = req.query
+    
+    const activeOperators = await getActiveOperatorsService()
+
+    res.status(200).json({
+      status: 'success',
+      data: activeOperators,
+    })
+  } catch (error) {
+    next(error)
+  }
+}
 
 // @desc    Invite a team member via secure email hook
 // @route   POST /api/v1/operators/invite

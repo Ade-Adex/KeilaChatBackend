@@ -16,6 +16,7 @@ import {
   getMySessions,
   updatePresence,
   availableOperators,
+  getActiveOperatorsController,
 } from '../../controllers/operator.controller.js'
 
 
@@ -38,12 +39,13 @@ router.use(tenantMiddleware)
 
 router.get('/', rbac('admin', 'supervisor'), getOperators)
 
+router.get('/active', getActiveOperatorsController)
+
 router.post('/invite', rbac('admin'), inviteOperator)
 
 router.get('/profile', getProfile)
 
 router.put('/profile', updateProfile)
-
 
 /*
 |--------------------------------------------------------------------------
