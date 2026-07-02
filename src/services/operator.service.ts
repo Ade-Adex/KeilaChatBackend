@@ -10,6 +10,7 @@ import { generateInvitationToken } from '../utils/auth/crypto.js'
 import { sendOperatorInvitationEmail } from '../lib/email.js'
 import { ENV } from '../config/env.js'
 import { hashPassword } from '../utils/auth/password.js'
+import { Types } from 'mongoose'
 
 export async function getOperatorsByAccount(accountId: string) {
   return Operator.find({
@@ -68,17 +69,18 @@ export async function inviteOperatorToAccount(
 }
 
 /**
- * Queries the database for all online operator agents.
+ * Queries the database for all online and active operator agents within a specific account.
  */
-export async function getActiveOperatorsService() {
-  // Adjust the query filter matching your database configuration schema parameters 
-  // (e.g., if you track presence status strings via an explicit field like status: 'online')
+export async function getActiveOperatorsService(accountId: string | Types.ObjectId) {
   const queryFilter = {
-    // status: 'online' 
+    accountId: new Types.ObjectId(accountId), 
+    status: 'active' as const,
+    isOnline: true,
+    availabilityStatus: 'online' as const
   }
 
   const operators = await Operator.find(queryFilter)
-    .select('firstName lastName avatar email')
+    .select('firstName lastName avatar email status isOnline availabilityStatus')
     .sort({ firstName: 1 })
     .lean()
 

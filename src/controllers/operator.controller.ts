@@ -103,7 +103,7 @@ export const getOperators = catchAsync(
 
 /**
  * GET /api/v1/operators/active
- * Retrieves all online and active operators for chat routing assignments.
+ * Retrieves online and active operators scoped ONLY to the current operator's account.
  */
 export async function getActiveOperatorsController(
   req: Request,
@@ -111,10 +111,17 @@ export async function getActiveOperatorsController(
   next: NextFunction
 ): Promise<void> {
   try {
-    // Optional context: if you pass propertyId via query parameters, extract it here
-    // const { propertyId } = req.query
+    const currentOperatorAccount = (req as any).user?.accountId || (req as any).operator?.accountId
+
+    if (!currentOperatorAccount) {
+      res.status(401).json({
+        status: 'error',
+        message: 'Unauthorized: Account context identity verification missing.'
+      })
+      return
+    }
     
-    const activeOperators = await getActiveOperatorsService()
+    const activeOperators = await getActiveOperatorsService(currentOperatorAccount)
 
     res.status(200).json({
       status: 'success',
