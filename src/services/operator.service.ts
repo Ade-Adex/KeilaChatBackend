@@ -142,6 +142,7 @@ export async function getOperatorActiveSessions(operatorId: string) {
     .sort({
       updatedAt: -1,
     })
+    .populate('visitorId', 'name') 
     .lean()
 }
 

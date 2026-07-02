@@ -12,6 +12,7 @@ import {
   getPropertySessions,
   initiateVisitorSession,
   getOperatorChatHistory,
+  closeChatSession,
 } from '../services/session.service.js'
 
 function getParam(value: string | string[] | undefined, name: string): string {
@@ -105,6 +106,20 @@ export const initiateSession = catchAsync(
       visitorTrackingId,
       createNew: Boolean(createNew), // Safeguard type casting to boolean primitives
     })
+
+    res.status(200).json({
+      status: 'success',
+      data: session,
+    })
+  },
+)
+
+export const closeSession = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const sessionId = getParam(req.params.sessionId, 'Session ID')
+    const { closedBy } = req.body
+
+    const session = await closeChatSession(sessionId, closedBy || 'operator')
 
     res.status(200).json({
       status: 'success',

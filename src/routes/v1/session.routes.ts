@@ -12,6 +12,7 @@ import {
   operatorSessions,
   propertySessions,
   initiateSession,
+  closeSession,
 } from '../../controllers/session.controller.js'
 
 const router = Router()
@@ -25,10 +26,13 @@ router.get('/active', activeSessions)
 
 router.get('/queued', queuedSessions)
 
+
 router.get('/operator/:operatorId', operatorSessions)
 
 router.get('/property/:propertyId', propertySessions)
 
 router.get('/:sessionId', getSession)
+
+router.patch('/:sessionId/close', closeSession)
 
 export default router

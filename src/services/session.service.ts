@@ -4,6 +4,8 @@ import Property from '../models/Property.js'
 import Visitor from '../models/Visitor.js'
 
 import { AppError } from './appError.js'
+import { EventService } from './event.service.js'
+import { createSystemMessage } from './message.service.js'
 
 interface PopulatedOperatorDoc {
   _id: { toString(): string }
@@ -165,17 +167,17 @@ export async function initiateVisitorSession({
     populatedSession?.assignedOperatorId as unknown as PopulatedOperatorDoc | null
   let customOperatorPayload = null
 
- if (operatorDoc) {
-   customOperatorPayload = {
-     _id: operatorDoc._id ? operatorDoc._id.toString() : '',
-     firstName: operatorDoc.firstName
-       ? operatorDoc.firstName.trim()
-       : 'Support Agent',
-     lastName: operatorDoc.lastName ? operatorDoc.lastName.trim() : '',
-     avatar: operatorDoc.avatar || '',
-     email: '',
-   }
- }
+  if (operatorDoc) {
+    customOperatorPayload = {
+      _id: operatorDoc._id ? operatorDoc._id.toString() : '',
+      firstName: operatorDoc.firstName
+        ? operatorDoc.firstName.trim()
+        : 'Support Agent',
+      lastName: operatorDoc.lastName ? operatorDoc.lastName.trim() : '',
+      avatar: operatorDoc.avatar || '',
+      email: '',
+    }
+  }
 
   return {
     sessionId: session._id.toString(),
@@ -184,4 +186,34 @@ export async function initiateVisitorSession({
     status: session.status,
     assignedOperatorId: customOperatorPayload,
   }
+}
+
+
+export async function closeChatSession(sessionId: string, closedBy: string) {
+  const session = await ChatSession.findByIdAndUpdate(
+    sessionId,
+    {
+      status: 'closed',
+      closedAt: new Date(),
+    },
+    { new: true },
+  )
+
+  if (!session) {
+    throw new AppError('Chat session not found', 404)
+  }
+
+  await createSystemMessage(sessionId, `Conversation ended by ${closedBy}`)
+
+  // Dispatch live status alerts instantly across connected system sockets
+  EventService.emitToProperty(
+    session.propertyId.toString(),
+    'session_status_changed',
+    {
+      sessionId: session._id.toString(),
+      status: 'closed',
+    },
+  )
+
+  return session
 }
