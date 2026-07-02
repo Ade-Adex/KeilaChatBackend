@@ -99,69 +99,67 @@ export class SocketService {
 
           const session = await ChatSession.findById(data.sessionId)
 
-         if (data.clientType === 'operator' && data.operatorId && session) {
-           socket.join(`property:dashboard:${session.propertyId.toString()}`)
-           socket.join(`operator:${data.operatorId}`)
-           socket.data.operatorId = data.operatorId
+          if (data.clientType === 'operator' && data.operatorId && session) {
+            socket.join(`property:dashboard:${session.propertyId.toString()}`)
+            socket.join(`operator:${data.operatorId}`)
+            socket.data.operatorId = data.operatorId
 
-           await PresenceService.setOperatorOnline(data.operatorId, socket.id)
+            await PresenceService.setOperatorOnline(data.operatorId, socket.id)
 
-           // 🎯 FIX: Automatically change the status and assign the operator if it was queued or unassigned
-           if (
-             session.status === 'queued' ||
-             session.status === 'waiting' ||
-             !session.assignedOperatorId
-           ) {
-             await ChatSession.findByIdAndUpdate(data.sessionId, {
-               status: 'active',
-               assignedOperatorId: data.operatorId,
-             })
+            // 🎯 FIX: Automatically change the status and assign the operator if it was queued or unassigned
+            if (
+              session.status === 'queued' ||
+              session.status === 'waiting' ||
+              !session.assignedOperatorId
+            ) {
+              await ChatSession.findByIdAndUpdate(data.sessionId, {
+                status: 'active',
+                assignedOperatorId: data.operatorId,
+              })
 
-             // Notify the visitor widget and refresh the dashboard panels globally
-             this.io
-               .to(room)
-               .emit('session_status_changed', {
-                 sessionId: data.sessionId,
-                 status: 'active',
-               })
-             this.io
-               .to(`property:dashboard:${session.propertyId}`)
-               .emit('dashboard_refresh_request')
-           }
+              // Notify the visitor widget and refresh the dashboard panels globally
+              this.io.to(room).emit('session_status_changed', {
+                sessionId: data.sessionId,
+                status: 'active',
+              })
+              this.io
+                .to(`property:dashboard:${session.propertyId}`)
+                .emit('dashboard_refresh_request')
+            }
 
-           const operatorProfile = await Operator.findById(data.operatorId)
-             .select('firstName avatar')
-             .lean()
-           if (operatorProfile) {
-             this.io.to(room).emit('operator_joined', {
-               operatorId: data.operatorId,
-               name: operatorProfile.firstName?.trim() || 'Support Agent',
-               avatar: operatorProfile.avatar || '',
-             })
-           }
+            const operatorProfile = await Operator.findById(data.operatorId)
+              .select('firstName avatar')
+              .lean()
+            if (operatorProfile) {
+              this.io.to(room).emit('operator_joined', {
+                operatorId: data.operatorId,
+                name: operatorProfile.firstName?.trim() || 'Support Agent',
+                avatar: operatorProfile.avatar || '',
+              })
+            }
 
-           const messages = await Message.find({ sessionId: data.sessionId })
-             .sort({ createdAt: 1 })
-             .lean()
+            const messages = await Message.find({ sessionId: data.sessionId })
+              .sort({ createdAt: 1 })
+              .lean()
 
-           socket.emit('chat_history', messages)
+            socket.emit('chat_history', messages)
 
-           if (session.unreadOperator > 0) {
-             await markAllSeenInSession(
-               data.sessionId,
-               'visitor',
-               data.operatorId,
-             )
-             this.io.to(room).emit('messages_seen', {
-               sessionId: data.sessionId,
-               reader: 'operator',
-             })
+            if (session.unreadOperator > 0) {
+              await markAllSeenInSession(
+                data.sessionId,
+                'visitor',
+                data.operatorId,
+              )
+              this.io.to(room).emit('messages_seen', {
+                sessionId: data.sessionId,
+                reader: 'operator',
+              })
 
-             this.io
-               .to(`property:dashboard:${session.propertyId}`)
-               .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
-           }
-         }
+              this.io
+                .to(`property:dashboard:${session.propertyId}`)
+                .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
+            }
+          }
 
           if (data.clientType === 'visitor' && session) {
             // 🎯 FIX: DO NOT automatically call markAllSeenInSession here.
@@ -331,6 +329,66 @@ export class SocketService {
       socket.on('ping_server', () => {
         socket.emit('pong_server')
       })
+
+      /*
+       ****************************************
+       * 🎯 NEW: CHAT TRANSFER AGENT PIPELINE
+       ****************************************
+       */
+      socket.on(
+        'transfer_chat_session',
+        async (data: { sessionId: string; targetOperatorId: string }) => {
+          try {
+            if (!data.sessionId || !data.targetOperatorId) return
+
+            // 1. Update the session assignment on the database layer
+            const updatedSession = await ChatSession.findByIdAndUpdate(
+              data.sessionId,
+              {
+                assignedOperatorId: data.targetOperatorId,
+                status: 'active', // Ensure it keeps its active tracking flags
+              },
+              { new: true },
+            )
+
+            if (!updatedSession) return
+
+            const room = `session:${data.sessionId}`
+
+            // 2. Lookup the details of the incoming new assigned operator profile
+            const newOperator = await Operator.findById(data.targetOperatorId)
+              .select('firstName avatar')
+              .lean()
+
+            if (newOperator) {
+              // 3. System notice layout event emission into the message stream log channel
+              this.io.to(room).emit('presence_notification', {
+                message: `Chat was transferred to ${newOperator.firstName || 'Support Agent'}`,
+              })
+
+              // 4. Tell the new operator's socket connection workspace room map to join the session
+              this.io
+                .to(`operator:${data.targetOperatorId}`)
+                .emit('chat_assigned', {
+                  sessionId: data.sessionId,
+                  propertyId: updatedSession.propertyId,
+                  operatorId: data.targetOperatorId,
+                  operator: newOperator,
+                })
+            }
+
+            // 5. Notify the property dashboards across all operators to dynamically reposition sidebars
+            this.io
+              .to(`property:dashboard:${updatedSession.propertyId.toString()}`)
+              .emit('dashboard_refresh_request')
+          } catch (error) {
+            logger.error(
+              error,
+              'Failed to complete chat session transfer execution routing',
+            )
+          }
+        },
+      )
 
       /* -------------------------------------------------- */
       /* DISCONNECT STATE                                   */
