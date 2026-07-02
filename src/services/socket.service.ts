@@ -99,47 +99,69 @@ export class SocketService {
 
           const session = await ChatSession.findById(data.sessionId)
 
-          if (data.clientType === 'operator' && data.operatorId && session) {
-            socket.join(`property:dashboard:${session.propertyId.toString()}`)
-            socket.join(`operator:${data.operatorId}`)
-            socket.data.operatorId = data.operatorId
+         if (data.clientType === 'operator' && data.operatorId && session) {
+           socket.join(`property:dashboard:${session.propertyId.toString()}`)
+           socket.join(`operator:${data.operatorId}`)
+           socket.data.operatorId = data.operatorId
 
-            await PresenceService.setOperatorOnline(data.operatorId, socket.id)
+           await PresenceService.setOperatorOnline(data.operatorId, socket.id)
 
-            // Look up operator's name and image to push down stream channel paths
-            const operatorProfile = await Operator.findById(data.operatorId)
-              .select('firstName avatar')
-              .lean()
-            if (operatorProfile) {
-              this.io.to(room).emit('operator_joined', {
-                operatorId: data.operatorId,
-                name: operatorProfile.firstName?.trim() || 'Support Agent',
-                avatar: operatorProfile.avatar || '',
-              })
-            }
+           // 🎯 FIX: Automatically change the status and assign the operator if it was queued or unassigned
+           if (
+             session.status === 'queued' ||
+             session.status === 'waiting' ||
+             !session.assignedOperatorId
+           ) {
+             await ChatSession.findByIdAndUpdate(data.sessionId, {
+               status: 'active',
+               assignedOperatorId: data.operatorId,
+             })
 
-            const messages = await Message.find({ sessionId: data.sessionId })
-              .sort({ createdAt: 1 })
-              .lean()
+             // Notify the visitor widget and refresh the dashboard panels globally
+             this.io
+               .to(room)
+               .emit('session_status_changed', {
+                 sessionId: data.sessionId,
+                 status: 'active',
+               })
+             this.io
+               .to(`property:dashboard:${session.propertyId}`)
+               .emit('dashboard_refresh_request')
+           }
 
-            socket.emit('chat_history', messages)
+           const operatorProfile = await Operator.findById(data.operatorId)
+             .select('firstName avatar')
+             .lean()
+           if (operatorProfile) {
+             this.io.to(room).emit('operator_joined', {
+               operatorId: data.operatorId,
+               name: operatorProfile.firstName?.trim() || 'Support Agent',
+               avatar: operatorProfile.avatar || '',
+             })
+           }
 
-            if (session.unreadOperator > 0) {
-              await markAllSeenInSession(
-                data.sessionId,
-                'visitor',
-                data.operatorId,
-              )
-              this.io.to(room).emit('messages_seen', {
-                sessionId: data.sessionId,
-                reader: 'operator',
-              })
+           const messages = await Message.find({ sessionId: data.sessionId })
+             .sort({ createdAt: 1 })
+             .lean()
 
-              this.io
-                .to(`property:dashboard:${session.propertyId}`)
-                .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
-            }
-          }
+           socket.emit('chat_history', messages)
+
+           if (session.unreadOperator > 0) {
+             await markAllSeenInSession(
+               data.sessionId,
+               'visitor',
+               data.operatorId,
+             )
+             this.io.to(room).emit('messages_seen', {
+               sessionId: data.sessionId,
+               reader: 'operator',
+             })
+
+             this.io
+               .to(`property:dashboard:${session.propertyId}`)
+               .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
+           }
+         }
 
           if (data.clientType === 'visitor' && session) {
             // 🎯 FIX: DO NOT automatically call markAllSeenInSession here.
