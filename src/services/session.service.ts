@@ -121,33 +121,29 @@ export async function initiateVisitorSession({
     throw new AppError('Visitor not found', 404)
   }
 
-  const targetStatuses = createNew
+  // 🎯 FIX: Declare the array using your exact valid status literals.
+  // This explicitly matches Mongoose's internal schema enum signature type tracker.
+  const targetStatuses: ('waiting' | 'queued' | 'active')[] = createNew
     ? ['waiting', 'queued', 'active']
-    : ['waiting', 'queued', 'active', 'closed']
+    : ['waiting', 'queued', 'active']
 
-  const session = await ChatSession.findOneAndUpdate(
-    {
+  let session = await ChatSession.findOne({
+    propertyId: property._id,
+    visitorId: visitor._id,
+    status: { $in: targetStatuses }, // 🛡️ Clean, Type-safe, and compile warning free!
+  }).lean()
+
+  // If no open session exists, or force reset is active, spin up a brand new one
+  if (!session || createNew) {
+    session = await ChatSession.create({
       propertyId: property._id,
       visitorId: visitor._id,
-      status: {
-        $in: targetStatuses,
-      } as any,
-    },
-    {
-      $setOnInsert: {
-        propertyId: property._id,
-        visitorId: visitor._id,
-        status: 'waiting',
-        channel: 'widget',
-        visitorJoinedAt: new Date(),
-        lastActivityAt: new Date(),
-      },
-    },
-    {
-      upsert: true,
-      new: true,
-    },
-  ).lean()
+      status: 'waiting',
+      channel: 'widget',
+      visitorJoinedAt: new Date(),
+      lastActivityAt: new Date(),
+    }).then((doc) => doc.toObject())
+  }
 
   if (!session) {
     throw new AppError(
@@ -188,7 +184,6 @@ export async function initiateVisitorSession({
   }
 }
 
-
 export async function closeChatSession(sessionId: string, closedBy: string) {
   const session = await ChatSession.findByIdAndUpdate(
     sessionId,
@@ -205,7 +200,6 @@ export async function closeChatSession(sessionId: string, closedBy: string) {
 
   await createSystemMessage(sessionId, `Conversation ended by ${closedBy}`)
 
-  // Dispatch live status alerts instantly across connected system sockets
   EventService.emitToProperty(
     session.propertyId.toString(),
     'session_status_changed',
@@ -214,6 +208,11 @@ export async function closeChatSession(sessionId: string, closedBy: string) {
       status: 'closed',
     },
   )
+
+  EventService.emitToSession(sessionId.toString(), 'session_status_changed', {
+    sessionId: session._id.toString(),
+    status: 'closed',
+  })
 
   return session
 }
