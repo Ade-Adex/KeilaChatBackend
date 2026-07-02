@@ -106,14 +106,24 @@ export class SocketService {
 
             await PresenceService.setOperatorOnline(data.operatorId, socket.id)
 
+            // Look up operator's name and image to push down stream channel paths
+            const operatorProfile = await Operator.findById(data.operatorId)
+              .select('firstName avatar')
+              .lean()
+            if (operatorProfile) {
+              this.io.to(room).emit('operator_joined', {
+                operatorId: data.operatorId,
+                name: operatorProfile.firstName?.trim() || 'Support Agent',
+                avatar: operatorProfile.avatar || '',
+              })
+            }
+
             const messages = await Message.find({ sessionId: data.sessionId })
               .sort({ createdAt: 1 })
               .lean()
 
             socket.emit('chat_history', messages)
 
-            // 🎯 DELIBERATE SAFETY CHECK: Only issue an automated read receipt on room entrance
-            // if there are actually active unseen elements, preventing blank race loops.
             if (session.unreadOperator > 0) {
               await markAllSeenInSession(
                 data.sessionId,
@@ -185,20 +195,10 @@ export class SocketService {
       /* -------------------------------------------------- */
       socket.on('send_message', async (data: SendMessagePayload) => {
         try {
+          // MessagePipeline already handles global room emissions and dashboard sync updates internally!
           const message = await MessagePipeline.processMessage(data)
 
-          EventService.emitToSession(data.sessionId, 'new_message', message)
-
-          const session = await ChatSession.findById(data.sessionId).lean()
-          if (session && session.propertyId) {
-            const propertyRoom = `property:dashboard:${session.propertyId.toString()}`
-
-            this.io.to(propertyRoom).emit('dashboard_message_update', {
-              sessionId: data.sessionId,
-              message: message,
-            })
-          }
-
+          // Only send the lightweight operational acknowledgment back to the source socket
           socket.emit('message_ack', {
             messageId: message._id,
             sessionId: data.sessionId,

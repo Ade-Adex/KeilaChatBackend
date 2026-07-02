@@ -165,15 +165,17 @@ export async function initiateVisitorSession({
     populatedSession?.assignedOperatorId as unknown as PopulatedOperatorDoc | null
   let customOperatorPayload = null
 
-  if (operatorDoc) {
-    customOperatorPayload = {
-      // Clean string mutations fallback verification handling
-      _id: operatorDoc._id ? operatorDoc._id.toString() : '',
-      firstName: operatorDoc.firstName || '',
-      lastName: operatorDoc.lastName || '',
-      avatar: operatorDoc.avatar || '',
-    }
-  }
+ if (operatorDoc) {
+   customOperatorPayload = {
+     _id: operatorDoc._id ? operatorDoc._id.toString() : '',
+     firstName: operatorDoc.firstName
+       ? operatorDoc.firstName.trim()
+       : 'Support Agent',
+     lastName: operatorDoc.lastName ? operatorDoc.lastName.trim() : '',
+     avatar: operatorDoc.avatar || '',
+     email: '',
+   }
+ }
 
   return {
     sessionId: session._id.toString(),
