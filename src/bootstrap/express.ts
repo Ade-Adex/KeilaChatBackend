@@ -19,25 +19,14 @@ export const bootstrapExpress = () => {
 
       origin: async (origin, callback) => {
         try {
-          /*
-           * Browser-less clients
-           */
           if (!origin) {
             return callback(null, true)
           }
 
-          /*
-           * YOUR FRONTEND
-           */
-          if (
-            origin === ENV.BASE_URL
-          ) {
+          if (origin === ENV.BASE_URL) {
             return callback(null, true)
           }
 
-          /*
-           * CUSTOMER DOMAINS
-           */
           const property = await Property.findOne({
             $or: [{ domain: origin }, { allowedDomains: origin }],
           }).lean()
