@@ -13,7 +13,8 @@ import notificationRouter from './v1/notification.routes.js'
 import aiRouter from './v1/ai.routes.js'
 import accountRouter from './v1/account.routes.js'
 import dashboardRouter from './v1/dashboard.routes.js'
-import visitorRouter from './v1/visitor.routes.js' // 🎯 Added import
+import visitorRouter from './v1/visitor.routes.js'
+import knowledgeBaseRouter from './v1/knowledgeBase.routes.js'
 
 const router = Router()
 
@@ -33,5 +34,6 @@ router.use('/dashboard', dashboardRouter)
 router.use('/ai', aiRouter)
 router.use('/account', accountRouter)
 router.use('/visitors', visitorRouter) 
+router.use('/knowledge-base', knowledgeBaseRouter)
 
 export default router

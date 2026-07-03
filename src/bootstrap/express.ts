@@ -23,6 +23,15 @@ export const bootstrapExpress = () => {
             return callback(null, true)
           }
 
+          const localOrigins = [
+            'http://localhost:3000',
+            'http://127.0.0.1:3000',
+            'http://localhost:5173',
+          ]
+          if (localOrigins.includes(origin) || ENV.NODE_ENV === 'development') {
+            return callback(null, true)
+          }
+
           if (origin === ENV.BASE_URL) {
             return callback(null, true)
           }
@@ -43,7 +52,13 @@ export const bootstrapExpress = () => {
 
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-      allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+      allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'Accept',
+        'x-property-id',
+        'x-account-id',
+      ],
     }),
   )
 
