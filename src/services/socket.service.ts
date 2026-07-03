@@ -106,11 +106,17 @@ export class SocketService {
 
             await PresenceService.setOperatorOnline(data.operatorId, socket.id)
 
-            // 🎯 FIX: Automatically change the status and assign the operator if it was queued or unassigned
+            // 🛡️ ONLY intercept if AI is off, or the conversation was explicitly escalated/queued for human eyes.
+            const isReadyForHuman =
+              !session.aiEnabled ||
+              session.aiEscalated ||
+              session.status === 'queued'
+
             if (
-              session.status === 'queued' ||
-              session.status === 'waiting' ||
-              !session.assignedOperatorId
+              isReadyForHuman &&
+              (session.status === 'queued' ||
+                session.status === 'waiting' ||
+                !session.assignedOperatorId)
             ) {
               await ChatSession.findByIdAndUpdate(data.sessionId, {
                 status: 'active',
@@ -162,10 +168,7 @@ export class SocketService {
           }
 
           if (data.clientType === 'visitor' && session) {
-            // 🎯 FIX: DO NOT automatically call markAllSeenInSession here.
             // Let ClientChatWrapper handle triggering read status explicitly via 'mark_session_seen' when open === true.
-
-            // However, if the visitor is online and connecting, any pending operator message can safely be marked delivered.
             await markAllDelivered(data.sessionId, 'operator')
             await markAllDelivered(data.sessionId, 'ai')
 
@@ -335,71 +338,71 @@ export class SocketService {
        * 🎯 NEW: CHAT TRANSFER AGENT PIPELINE
        ****************************************
        */
-     socket.on(
-       'transfer_chat_session',
-       async (data: { sessionId: string; targetOperatorId: string }) => {
-         try {
-           if (!data.sessionId || !data.targetOperatorId) return
+      socket.on(
+        'transfer_chat_session',
+        async (data: { sessionId: string; targetOperatorId: string }) => {
+          try {
+            if (!data.sessionId || !data.targetOperatorId) return
 
-           // 1. Fetch the incoming new assigned operator profile details
-           const newOperator = await Operator.findById(data.targetOperatorId)
-             .select('firstName lastName avatar')
-             .lean()
-           if (!newOperator) return
+            // 1. Fetch the incoming new assigned operator profile details
+            const newOperator = await Operator.findById(data.targetOperatorId)
+              .select('firstName lastName avatar')
+              .lean()
+            if (!newOperator) return
 
-           // 2. Update the session assignment on the database layer
-           const updatedSession = await ChatSession.findByIdAndUpdate(
-             data.sessionId,
-             {
-               assignedOperatorId: data.targetOperatorId,
-               status: 'active',
-             },
-             { new: true },
-           )
+            // 2. Update the session assignment on the database layer
+            const updatedSession = await ChatSession.findByIdAndUpdate(
+              data.sessionId,
+              {
+                assignedOperatorId: data.targetOperatorId,
+                status: 'active',
+              },
+              { new: true },
+            )
 
-           if (!updatedSession) return
+            if (!updatedSession) return
 
-           const room = `session:${data.sessionId}`
-           const transferText =
-             `Chat was transferred to ${newOperator.firstName} ${newOperator.lastName || ''}`.trim()
+            const room = `session:${data.sessionId}`
+            const transferText =
+              `Chat was transferred to ${newOperator.firstName} ${newOperator.lastName || ''}`.trim()
 
-           // 🎯 3. SAVE THE SYSTEM NOTICE PERMANENTLY IN THE DATABASE
-           // Adjust model name "Message" matching your actual database schema
-           const systemMessage = await Message.create({
-             sessionId: data.sessionId,
-             senderType: 'system',
-             senderId: 'system',
-             messageText: transferText,
-             messageType: 'text',
-             status: 'seen',
-             createdAt: new Date(),
-           })
+            // 🎯 3. SAVE THE SYSTEM NOTICE PERMANENTLY IN THE DATABASE
+            // Adjust model name "Message" matching your actual database schema
+            const systemMessage = await Message.create({
+              sessionId: data.sessionId,
+              senderType: 'system',
+              senderId: 'system',
+              messageText: transferText,
+              messageType: 'text',
+              status: 'seen',
+              createdAt: new Date(),
+            })
 
-           // 4. Broadcast the actual message object to everyone in the room (including the visitor)
-           this.io.to(room).emit('new_message', systemMessage)
+            // 4. Broadcast the actual message object to everyone in the room (including the visitor)
+            this.io.to(room).emit('new_message', systemMessage)
 
-           // 5. Tell the new operator's specific layout stream to join the session
-           this.io
-             .to(`operator:${data.targetOperatorId}`)
-             .emit('chat_assigned', {
-               sessionId: data.sessionId,
-               propertyId: updatedSession.propertyId,
-               operatorId: data.targetOperatorId,
-               operator: newOperator,
-             })
+            // 5. Tell the new operator's specific layout stream to join the session
+            this.io
+              .to(`operator:${data.targetOperatorId}`)
+              .emit('chat_assigned', {
+                sessionId: data.sessionId,
+                propertyId: updatedSession.propertyId,
+                operatorId: data.targetOperatorId,
+                operator: newOperator,
+              })
 
-           // 6. Notify the property dashboards across all operators to dynamically reposition sidebars
-           this.io
-             .to(`property:dashboard:${updatedSession.propertyId.toString()}`)
-             .emit('dashboard_refresh_request')
-         } catch (error) {
-           logger.error(
-             error,
-             'Failed to complete chat session transfer execution routing',
-           )
-         }
-       },
-     )
+            // 6. Notify the property dashboards across all operators to dynamically reposition sidebars
+            this.io
+              .to(`property:dashboard:${updatedSession.propertyId.toString()}`)
+              .emit('dashboard_refresh_request')
+          } catch (error) {
+            logger.error(
+              error,
+              'Failed to complete chat session transfer execution routing',
+            )
+          }
+        },
+      )
       /* -------------------------------------------------- */
       /* DISCONNECT STATE                                   */
       /* -------------------------------------------------- */
