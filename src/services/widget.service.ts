@@ -20,8 +20,9 @@ export interface WidgetInitializationResult {
   visitor: any | null
 
   widgetSettings: {
+    aiName?: string | undefined 
     launcherPosition: string
-    launcherIcon?: string
+    launcherIcon?: string | undefined 
     welcomeMessage: string
     offlineMessage: string
     showAgentPhoto: boolean
