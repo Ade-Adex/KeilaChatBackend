@@ -103,8 +103,19 @@ export class PropertyService {
     property.allowedDomains = data.allowedDomains
 
     property.widgetSettings = {
-      ...(property.widgetSettings ?? {}),
-      aiName: data.aiName,
+      launcherPosition:
+        property.widgetSettings?.launcherPosition ?? 'bottom-right',
+      welcomeMessage:
+        property.widgetSettings?.welcomeMessage ?? 'Hi 👋 How can we help?',
+      offlineMessage:
+        property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
+      showAgentPhoto: property.widgetSettings?.showAgentPhoto ?? true,
+      soundEnabled: property.widgetSettings?.soundEnabled ?? true,
+      allowFileUpload: property.widgetSettings?.allowFileUpload ?? true,
+      allowEmoji: property.widgetSettings?.allowEmoji ?? true,
+      allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
+      launcherIcon: property.widgetSettings?.launcherIcon,
+      aiName: data.aiName, // Inject updated name parameter
     }
 
     property.details = {
