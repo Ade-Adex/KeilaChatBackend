@@ -39,6 +39,7 @@ export class PropertyService {
     data: {
       name: string
       domain: string
+      aiName: string
       allowedDomains: string[]
       category: string
       subCategory: string
@@ -69,6 +70,9 @@ export class PropertyService {
 
         widgetId: credentials.widgetId,
         apiKey: credentials.apiKey,
+        widgetSettings: {
+          aiName: data.aiName || 'AI Assistant',
+        },
 
         details: {
           category: data.category,
@@ -97,6 +101,11 @@ export class PropertyService {
     property.name = data.name
     property.domain = data.domain
     property.allowedDomains = data.allowedDomains
+
+    property.widgetSettings = {
+      ...(property.widgetSettings ?? {}),
+      aiName: data.aiName,
+    }
 
     property.details = {
       ...(property.details ?? {}),
