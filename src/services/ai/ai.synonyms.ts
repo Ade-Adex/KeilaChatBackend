@@ -9,6 +9,7 @@ export const synonyms = {
     'open account',
     'join',
     'create',
+    'register',
   ],
 
   login: ['signin', 'sign in', 'log in', 'access'],

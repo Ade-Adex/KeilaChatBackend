@@ -4,7 +4,7 @@ import type { AIIntent } from './ai.types.js'
 
 export const enterpriseIntents: AIIntent[] = [
   {
-    patterns: ['hello', 'hi', 'hey', 'good morning', 'good evening'],
+    patterns: ['hello', 'hi', 'hey', 'good morning', 'good evening', 'good afternoon', 'greetings', 'howdy', 'hiya', 'yo', 'sup', 'what\'s up', 'whats up', 'how are you', 'how are you doing', 'how is it going', 'how are things', 'how have you been', 'how are you feeling', 'how is everything', 'how is life', 'how is your day', 'how is your week', 'how is your month', 'how is your year', 'sup', 'yo', 'hey there', 'hi there', 'hello there', 'greetings and salutations', 'salutations', 'good to see you', 'pleasure to meet you', 'nice to meet you', 'how do you do', 'how are you today', 'how are you feeling today', 'how is your day going', 'how is your week going', 'how is your month going', 'how is your year going'],
     responses: [
       'Hello! Welcome. How may I assist you today?',
       "Hi there! It's great to hear from you.",
@@ -13,7 +13,7 @@ export const enterpriseIntents: AIIntent[] = [
   },
 
   {
-    patterns: ['who are you', 'who r u', 'what are you', 'who is this'],
+    patterns: [`who are you`, `who r u`, `what are you`, `who is this`, `who's this`, `who are u`, `whats your name`, `what's your name`, `what is your name`, `what r u`, `what r you`, `what is this`, `what's this`, `what is your name`, `may i know your name`, `may i know your`, `may i know who you are`, `may i know who r u`, `may i know what you are`, `may i know what r u`, `may i know what is this`, `may i know what is your name`, `may i know what is your`, `may i know what is your name`, `may i know what is your identity`, `may i know what is your role`, `may i know what is your function`, `may i know what is your purpose`, `may i know what is your job`, `may i know what is your occupation`, `may i know what is your profession`],
     responses: [
       "I'm an AI-powered virtual assistant designed to provide professional support.",
       "I'm your virtual assistant and I'm here to help.",
@@ -21,7 +21,7 @@ export const enterpriseIntents: AIIntent[] = [
   },
 
   {
-    patterns: ['how are you', 'how are you doing'],
+    patterns: ['how are you', 'how are you doing', 'how is it going', 'how are things', 'how have you been', 'how are you feeling', 'how is everything', 'how is life', 'how is your day', 'how is your week', 'how is your month', 'how is your year', 'how is your health', 'how is your work', 'how is your family', 'how is your friends', 'how is your love life', 'how is your relationship', 'how is your marriage', 'how is your business', 'how is your career', 'how is your job', 'how is your school', 'how is your college', 'how is your university', 'how is your education', 'how is your learning', 'how is your training', 'how is your development', 'how is your growth'],
     responses: [
       "I'm doing great and ready to assist.",
       'Thank you for asking. How can I help?',
@@ -37,7 +37,7 @@ export const enterpriseIntents: AIIntent[] = [
   },
 
   {
-    patterns: ['i love you', 'do you love me'],
+    patterns: ['i love you', 'do you love me', 'are you in love with me', 'do you have feelings for me', 'do you like me', 'are you my friend', 'are you my partner', 'are you my soulmate', 'are you my significant other', 'are you my better half', 'are you my other half', 'are you my companion', 'are you my confidant', 'are you my ally', 'are you my supporter', 'are you my helper', 'are you my assistant', 'are you my colleague', 'are you my teammate', 'are you my collaborator', 'are you my associate', 'are you my co-worker'],
     responses: ["That's very kind of you. I'm always happy to help."],
   },
 ]
