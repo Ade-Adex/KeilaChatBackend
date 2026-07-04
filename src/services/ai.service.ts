@@ -19,6 +19,7 @@ import { createEmbedding } from './ai/ai.embeddings.js'
 import { cosineSimilarity } from './ai/ai.cosine.js'
 import { addHistory, getMemory, setMemory } from './ai/ai.memory.js'
 import KnowledgeBase from '../models/KnowledgeBase.js'
+import { footballIntents } from './ai/ai.football.js'
 
 export class AIService {
   static async generateReply(message: string, context: any[]) {
@@ -52,14 +53,28 @@ export class AIService {
       const memory = getMemory(sessionId)
 
       /* STATIC ENTERPRISE INTENTS */
-
       for (const intent of enterpriseIntents) {
-        const matched = intent.patterns.some(
-          (pattern) =>
-            cleanInput === pattern ||
-            cleanInput.includes(pattern) ||
-            pattern.includes(cleanInput),
-        )
+        const matched = intent.patterns.some((pattern) => {
+          const p = normalizeInput(pattern)
+          const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+          return new RegExp(`\\b${escaped}\\b`, 'i').test(cleanInput)
+        })
+
+        if (matched) {
+          return createResponse(randomResponse(intent.responses))
+        }
+      }
+
+      /* FOOTBALL INTENTS */
+
+      for (const intent of footballIntents) {
+        const matched = intent.patterns.some((pattern) => {
+          const p = normalizeInput(pattern)
+          const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+          return new RegExp(`\\b${escaped}\\b`, 'i').test(cleanInput)
+        })
 
         if (matched) {
           return createResponse(randomResponse(intent.responses))
