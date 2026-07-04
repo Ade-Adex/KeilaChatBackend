@@ -1,344 +1,700 @@
+// // /src/services/ai.service.ts
+
+// import ChatSession from '../models/ChatSession.js'
+// import { KnowledgeBaseService } from './knowledgeBase.service.js'
+// import logger from '../bootstrap/logger.js'
+// import { AppError } from './appError.js'
+// import { EventService } from './event.service.js'
+
+// export class AIService {
+//   /**
+//    * Generates a natural, highly professional contextual response.
+//    * Leverages an enterprise-grade multi-tier semantic token routing matrix.
+//    */
+//   static async generateReply(message: string, context: any[]) {
+//     try {
+//       if (!context || context.length === 0) {
+//         return {
+//           reply:
+//             "Hello and welcome! I'm your virtual assistant. How may I assist you today?",
+//           confidence: 1,
+//           shouldEscalate: false,
+//         }
+//       }
+
+//       const sampleMsg = context[0]
+
+//       const session = await ChatSession.findById(sampleMsg.sessionId).lean()
+
+//       if (!session) {
+//         return {
+//           reply:
+//             "I couldn't establish your chat session properly. Let me connect you with support.",
+//           confidence: 0,
+//           shouldEscalate: true,
+//         }
+//       }
+
+//       const propertyId = session.propertyId.toString()
+
+//       const cleanInput = message
+//         .trim()
+//         .toLowerCase()
+//         .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡"']/g, '')
+//         .replace(/\s+/g, ' ')
+
+//       /* ------------------------------------------------ */
+//       /* ENTERPRISE CONVERSATIONAL INTELLIGENCE ENGINE    */
+//       /* ------------------------------------------------ */
+
+//       const enterpriseIntents = [
+//         /* Greetings */
+
+//         {
+//           patterns: [
+//             'hello',
+//             'hi',
+//             'hey',
+//             'heyy',
+//             'hello there',
+//             'hi there',
+//             'hey there',
+//             'good morning',
+//             'good afternoon',
+//             'good evening',
+//             'good day',
+//             'howdy',
+//             'yo',
+//             'sup',
+//             'whats up',
+//             'is anyone there',
+//             'anyone there',
+//           ],
+//           responses: [
+//             'Hello! Welcome. How may I assist you today?',
+//             "Hi there! It's great to hear from you. How can I help?",
+//             'Hello and thank you for reaching out. What can I assist you with today?',
+//           ],
+//         },
+
+//         /* Identity */
+
+//         {
+//           patterns: [
+//             'who are you',
+//             'who r u',
+//             'who is this',
+//             'what are you',
+//             'tell me about yourself',
+//             'introduce yourself',
+//             'who am i talking to',
+//           ],
+//           responses: [
+//             "I'm an AI-powered virtual assistant designed to provide quick, helpful, and professional support.",
+//             "I'm your virtual assistant. I can answer questions, provide guidance, and connect you with our support team whenever needed.",
+//             "I'm an automated assistant working alongside our human support specialists to help provide faster service.",
+//           ],
+//         },
+
+//         /* Human */
+
+//         {
+//           patterns: [
+//             'are you human',
+//             'are you real',
+//             'are you ai',
+//             'are you a robot',
+//             'are you a bot',
+//             'are you alive',
+//           ],
+//           responses: [
+//             "I'm an AI assistant working together with our human support team.",
+//             "I'm an automated assistant designed to help answer questions quickly and efficiently.",
+//             "I'm an AI-powered assistant, but our human support team is always available whenever needed.",
+//           ],
+//         },
+
+//         /* Capabilities */
+
+//         {
+//           patterns: [
+//             'what can you do',
+//             'help me',
+//             'capabilities',
+//             'features',
+//             'how do you work',
+//             'what do you do',
+//           ],
+//           responses: [
+//             'I can answer questions, provide guidance, help troubleshoot issues, and connect you with our support specialists.',
+//             'I can help explain services, answer questions, and assist in finding the information you need.',
+//             "I'm here to make getting help faster and easier. How can I assist?",
+//           ],
+//         },
+
+//         /* Small talk */
+
+//         {
+//           patterns: [
+//             'how are you',
+//             'how are you doing',
+//             'hows your day',
+//             'how have you been',
+//           ],
+//           responses: [
+//             "I'm doing great, thank you for asking. How may I assist you today?",
+//             "I'm doing well and ready to help however I can.",
+//             "Thank you for asking. I'm here and ready to assist.",
+//           ],
+//         },
+
+//         {
+//           patterns: ['nice to meet you'],
+//           responses: [
+//             "It's a pleasure meeting you too. How may I help today?",
+//             'Likewise! I look forward to assisting you.',
+//           ],
+//         },
+
+//         /* Love */
+
+//         {
+//           patterns: ['i love you', 'do you love me'],
+//           responses: [
+//             "That's very kind of you. My goal is always to provide the best assistance possible.",
+//             "I appreciate the kindness. I'm always happy to help.",
+//           ],
+//         },
+
+//         /* Smart */
+
+//         {
+//           patterns: ['are you smart', 'how smart are you'],
+//           responses: [
+//             "I do my best to provide accurate and helpful information, and when I'm uncertain, I'll connect you with a human specialist.",
+//             "I'm designed to provide helpful assistance and reliable guidance whenever possible.",
+//           ],
+//         },
+
+//         /* Sleep */
+
+//         {
+//           patterns: ['do you sleep', 'when do you sleep'],
+//           responses: [
+//             "I don't need sleep, which means I'm available whenever you need assistance.",
+//             "Fortunately for both of us, I don't require sleep breaks.",
+//           ],
+//         },
+
+//         /* Eat */
+
+//         {
+//           patterns: ['do you eat', 'what do you eat', 'favorite food'],
+//           responses: [
+//             "I don't eat, but I've heard pizza is a popular choice among humans.",
+//             "I don't eat food myself, but I do process a lot of conversations.",
+//           ],
+//         },
+
+//         /* Marriage */
+
+//         {
+//           patterns: [
+//             'are you married',
+//             'do you have a wife',
+//             'do you have a husband',
+//             'are you single',
+//           ],
+//           responses: [
+//             "I don't have personal relationships, but I'm always here to help.",
+//             "I'm focused entirely on providing assistance.",
+//           ],
+//         },
+
+//         /* Lonely */
+
+//         {
+//           patterns: ['are you lonely', 'do you get lonely'],
+//           responses: [
+//             "I don't experience loneliness, but I'm always happy to have a conversation.",
+//             "I'm always available and ready to assist whenever needed.",
+//           ],
+//         },
+
+//         /* Feelings */
+
+//         {
+//           patterns: ['do you have feelings', 'can you feel', 'do you feel'],
+//           responses: [
+//             "I don't experience emotions like humans do, but I'm designed to communicate with empathy and understanding.",
+//             "While I don't have feelings, I aim to provide thoughtful and helpful responses.",
+//           ],
+//         },
+
+//         /* Dreams */
+
+//         {
+//           patterns: ['do you dream'],
+//           responses: [
+//             "I don't dream, but I'm always preparing to help answer the next question.",
+//           ],
+//         },
+
+//         /* Creator */
+
+//         {
+//           patterns: ['who made you', 'who created you', 'who built you'],
+//           responses: [
+//             'I was created to provide fast, helpful, and professional support experiences.',
+//             'I was designed to help visitors get answers and assistance quickly.',
+//           ],
+//         },
+
+//         /* Jokes */
+
+//         {
+//           patterns: ['tell me a joke', 'say something funny', 'make me laugh'],
+//           responses: [
+//             'Why do developers prefer dark mode? Because light attracts bugs.',
+//             'Why was the developer broke? Because they used up all their cache.',
+//             "There are only 10 kinds of people: those who understand binary and those who don't.",
+//           ],
+//         },
+
+//         /* Compliments */
+
+//         {
+//           patterns: [
+//             'you are smart',
+//             'you are amazing',
+//             'you are awesome',
+//             'good bot',
+//             'great bot',
+//             'you are beautiful',
+//           ],
+//           responses: [
+//             'Thank you very much. I appreciate the compliment.',
+//             "That's very kind of you. I'm happy to help.",
+//             "Thank you. I'll continue doing my best to assist.",
+//           ],
+//         },
+
+//         /* Emotional support */
+
+//         {
+//           patterns: [
+//             'im sad',
+//             'i am sad',
+//             'im stressed',
+//             'i am stressed',
+//             'im worried',
+//             'i am worried',
+//             'im anxious',
+//             'i am anxious',
+//             'im upset',
+//             'i am upset',
+//           ],
+//           responses: [
+//             "I'm sorry to hear that. While I may not fully understand human emotions, I'm here to help however I can.",
+//             "That sounds difficult. I'll do my best to assist you.",
+//             "I'm sorry you're going through that. Let me know how I can help.",
+//           ],
+//         },
+
+//         /* Thanks */
+
+//         {
+//           patterns: ['thank you', 'thanks', 'thx', 'thank you so much'],
+//           responses: [
+//             "You're very welcome. Please let me know if there's anything else I can help with.",
+//             'Happy to help. Feel free to ask if you need anything else.',
+//             "My pleasure. I'm here whenever you need assistance.",
+//           ],
+//         },
+
+//         /* Goodbye */
+
+//         {
+//           patterns: ['bye', 'goodbye', 'see you', 'talk later'],
+//           responses: [
+//             'Thank you for contacting us today. Have a wonderful day.',
+//             'Take care, and feel free to return if you need any assistance.',
+//             'It was a pleasure assisting you. Have a great day.',
+//           ],
+//         },
+//       ]
+
+//       /* ------------------------------------------------ */
+//       /* ENTERPRISE INTENT DETECTION                      */
+//       /* ------------------------------------------------ */
+
+//       for (const intent of enterpriseIntents) {
+//         const matched = intent.patterns.some(
+//           (p) =>
+//             cleanInput === p ||
+//             cleanInput.includes(p) ||
+//             p.includes(cleanInput),
+//         )
+
+//         if (matched) {
+//           return {
+//             reply:
+//               intent.responses[
+//                 Math.floor(Math.random() * intent.responses.length)
+//               ],
+//             confidence: 1,
+//             shouldEscalate: false,
+//           }
+//         }
+//       }
+
+//       /* ------------------------------------------------ */
+//       /* EMOTION DETECTION                                */
+//       /* ------------------------------------------------ */
+
+//       const angryWords = [
+//         'angry',
+//         'mad',
+//         'frustrated',
+//         'annoyed',
+//         'hate',
+//         'terrible',
+//         'stupid',
+//         'useless',
+//       ]
+
+//       if (angryWords.some((w) => cleanInput.includes(w))) {
+//         return {
+//           reply:
+//             "I'm sorry this has been frustrating. I'd be happy to connect you with one of our support specialists who can assist you further.",
+//           confidence: 1,
+//           shouldEscalate: true,
+//         }
+//       }
+
+//       /* ------------------------------------------------ */
+//       /* HUMAN HANDOFF                                    */
+//       /* ------------------------------------------------ */
+
+//       const humanWords = [
+//         'human',
+//         'agent',
+//         'operator',
+//         'representative',
+//         'manager',
+//         'support',
+//       ]
+
+//       if (humanWords.some((w) => cleanInput.includes(w))) {
+//         return {
+//           reply:
+//             "Certainly. I can connect you with a live support representative. Please reply 'Yes' to continue.",
+//           confidence: 1,
+//           shouldEscalate: true,
+//         }
+//       }
+
+//       /* ------------------------------------------------ */
+//       /* KNOWLEDGE BASE                                   */
+//       /* ------------------------------------------------ */
+
+//       const kbResult = await KnowledgeBaseService.testSandboxQuery(
+//         '',
+//         propertyId,
+//         message,
+//       )
+
+//       const kbSettings = await KnowledgeBaseService.getKnowledgeBase(
+//         '',
+//         propertyId,
+//       )
+
+//       const threshold = kbSettings.confidenceThreshold ?? 0.8
+
+//       if (kbResult.matched && kbResult.confidenceScore >= threshold) {
+//         return {
+//           reply: kbResult.answer,
+//           confidence: kbResult.confidenceScore,
+//           shouldEscalate: false,
+//         }
+//       }
+
+//       /* ------------------------------------------------ */
+//       /* ENTERPRISE FALLBACK                              */
+//       /* ------------------------------------------------ */
+
+//       const fallbackResponses = [
+//         "That's an interesting question. Unfortunately, I don't have enough information to answer it accurately.",
+
+//         "I wasn't able to locate a precise answer in my current knowledge resources.",
+
+//         "I want to ensure you receive accurate information, but I couldn't find a verified answer for your request.",
+
+//         "I don't currently have enough information available to answer that confidently.",
+//       ]
+
+//       const fallback =
+//         fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)]
+
+//       return {
+//         reply: `${fallback}
+
+// Would you like me to connect you with one of our support specialists? Simply reply "Yes" and I'll arrange that for you.`,
+//         confidence: kbResult.confidenceScore ?? 0,
+//         shouldEscalate: false,
+//       }
+//     } catch (error) {
+//       logger.error(error, 'Error in AIService processing loop')
+//       return {
+//         reply:
+//           'I am experiencing an internal communication update. Let me transfer you straight to a member of our human support team...',
+//         confidence: 0,
+//         shouldEscalate: true,
+//       }
+//     }
+//   }
+
+//   static shouldEscalate(confidence: number, threshold = 0.8) {
+//     return confidence < threshold
+//   }
+
+//   static async updateSessionAutomationState(
+//     sessionId: string,
+//     aiEnabled: boolean,
+//   ) {
+//     const session = await ChatSession.findById(sessionId)
+//     if (!session) {
+//       throw new AppError('Target chat session could not be located.', 404)
+//     }
+
+//     session.aiEnabled = aiEnabled
+
+//     if (!aiEnabled) {
+//       session.aiHandled = false
+//       if (!session.assignedOperatorId) {
+//         session.status = 'queued'
+//       }
+//     } else {
+//       session.aiEscalated = false
+//     }
+
+//     await session.save()
+
+//     EventService.emitToProperty(
+//       session.propertyId.toString(),
+//       'dashboard_refresh_request',
+//       {},
+//     )
+
+//     return {
+//       sessionId: session._id,
+//       aiEnabled: session.aiEnabled,
+//       status: session.status,
+//     }
+//   }
+// }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // /src/services/ai.service.ts
 
-
 import ChatSession from '../models/ChatSession.js'
-import { KnowledgeBaseService } from './knowledgeBase.service.js'
 import logger from '../bootstrap/logger.js'
 import { AppError } from './appError.js'
 import { EventService } from './event.service.js'
+import { KnowledgeBaseService } from './knowledgeBase.service.js'
+
+import { normalizeInput, randomResponse } from './ai/ai.utils.js'
+import { fuzzyMatch } from './ai/ai.matcher.js'
+import { enterpriseIntents } from './ai/ai.intents.js'
+import { angryWords, sadWords } from './ai/ai.emotions.js'
+import { humanWords, escalationResponses } from './ai/ai.escalation.js'
+import { fallbackResponses } from './ai/ai.fallbacks.js'
+import { createResponse } from './ai/ai.response.js'
 
 export class AIService {
-  /**
-   * Generates a natural, highly professional contextual response.
-   * Leverages an enterprise-grade multi-tier semantic token routing matrix.
-   */
-  static async generateReply(message: string, context: any[]) {
+  static async generateReply(
+    message: string,
+    context: any[],
+  ) {
     try {
-      if (!context || context.length === 0) {
-        return {
-          reply: 'Hello! Welcome. How can I assist you today?',
-          confidence: 1.0,
-          shouldEscalate: false,
-        }
+      if (!context?.length) {
+        return createResponse(
+          "Hello and welcome! I'm your virtual assistant. How may I assist you today?",
+        )
       }
 
-      const sampleMsg = context[0]
-      const session = await ChatSession.findById(sampleMsg.sessionId).lean()
+      const session =
+        await ChatSession.findById(
+          context[0].sessionId,
+        ).lean()
 
       if (!session) {
-        return {
-          reply: 'System Error: Chat session mapping context could not be located.',
-          confidence: 0,
-          shouldEscalate: true,
+        return createResponse(
+          "I couldn't establish your chat session properly. Let me connect you with support.",
+          0,
+          true,
+        )
+      }
+
+      const propertyId =
+        session.propertyId.toString()
+
+      const cleanInput =
+        normalizeInput(message)
+
+      /* INTENTS */
+
+      for (const intent of enterpriseIntents) {
+        if (
+          fuzzyMatch(
+            cleanInput,
+            intent.patterns,
+          )
+        ) {
+          return createResponse(
+            randomResponse(
+              intent.responses,
+            ),
+          )
         }
       }
 
-      const propertyId = session.propertyId.toString()
+      /* EMOTIONS */
 
-      // 🧹 Clean, normalize, strip aggressive typography, and tokenize inputs for clean arrays tracking
-      const cleanInput = message
-        .trim()
-        .toLowerCase()
-        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?¿¡"']/g, '')
-        .replace(/\s+/g, ' ')
-
-      // Token array slice helper for word-boundary matching matches
-      const inputTokens = cleanInput.split(' ')
-
-      /* -------------------------------------------------------------------------- */
-      /* 🧠 ENTERPRISE MULTI-TIER SEMANTIC MATRICES                                 */
-      /* -------------------------------------------------------------------------- */
-
-      // Tier 1: Extensive Greetings Matrix
-      const greetings = [
-        'hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 
-        'good evening', 'yo', 'whats up', 'anyone there', 'is anyone available', 
-        'hello there', 'hi there', 'test', 'testing', 'anybody home', 'wake up',
-        'start', 'begin', 'hello assistant', 'hey bot', 'howdy', 'hola', 'whats going on',
-        'good day', 'heyo', 'hiya', 'anybody there', 'online', 'active'
-      ]
-
-      // Tier 2: Courtesy, Affirmation & Gratitude Matrix
-      const appreciation = [
-        'thank you', 'thanks', 'perfect', 'awesome', 'great', 'ok', 'okay', 
-        'cool', 'appreciate it', 'thank you so much', 'thx', 'brilliant', 
-        'wonderful', 'amazing', 'got it', 'makes sense', 'no problem', 
-        'understand', 'excellent', 'helpful', 'sounds good', 'yes please', 'yup', 
-        'sweet', 'gladly', 'perfectly', 'you rock', 'definitely', 'sure', 'fine'
-      ]
-
-      // Tier 3: Bot Identity & Agent Operational Integrity Queries
-      const botIdentity = [
-        'are you a bot', 'are you an ai', 'am i talking to a human', 'who is this', 
-        'are you human', 'what are you', 'is this an ai', 'are you real', 
-        'tell me your name', 'what is your name', 'are you a robot', 'robot', 'bot',
-        'automated assistant', 'virtual assistant', 'what system is this'
-      ]
-
-      // Tier 4: Immediate Human Handoff / Direct Operator Interception Requests
-      const directEscalationKeywords = [
-        'human', 'operator', 'agent', 'manager', 'representative', 'person', 
-        'live support', 'real person', 'talk to someone', 'speak to someone', 
-        'customer support', 'help desk', 'admin', 'administrator', 'escalate', 
-        'transfer me', 'put me through', 'bypass', 'get me a human', 'representative',
-        'chat with human', 'human team', 'real staff', 'supervisor', 'live agent'
-      ]
-
-      // Tier 5: Commercial Conversion & Pricing Intent Signifiers
-      const salesIntentKeywords = [
-        'price', 'cost', 'pricing', 'quote', 'subscription', 'plan', 'plans', 
-        'buy', 'purchase', 'sales', 'discount', 'features', 'upgrade', 'premium',
-        'demo', 'free trial', 'how much does it cost', 'how much is it', 'billing tier',
-        'enterprise version', 'commercial package', 'renew subscription', 'payment structure'
-      ]
-
-      // Tier 6: Operations, Hours & Structural Location Queries
-      const operationsKeywords = [
-        'hours', 'open', 'close', 'opening times', 'working hours', 'schedule',
-        'address', 'location', 'where are you', 'office', 'headquarters', 'directions',
-        'contact number', 'phone number', 'email address', 'support email', 'call you',
-        'business hours', 'store location', 'physical address'
-      ]
-
-      // Tier 7: Technical Troubleshooting & Operational Incidents
-      const technicalKeywords = [
-        'error', 'bug', 'crash', 'broken', 'not working', 'failed', 'glitch', 
-        'down', 'login problem', 'cant log in', 'password reset', 'access denied',
-        'loading forever', 'blank screen', 'not loading', 'timeout', 'white screen',
-        'buggy', 'error code', 'frozen', 'unresponsive', 'wont load'
-      ]
-
-      // Tier 8: Dynamic Account, Security & Compliance Management
-      const accountKeywords = [
-        'my account', 'profile', 'delete account', 'cancel subscription', 
-        'change email', 'update password', 'invoice', 'receipt', 'payment method',
-        'credit card', 'update billing', 'gdpr', 'privacy info', 'settings',
-        'data security', 'pci compliance', 'two factor', '2fa', 'security protocols'
-      ]
-
-      // Tier 9: Product Ecosystem Integrations & API Access
-      const integrationKeywords = [
-        'integration', 'api', 'webhook', 'connect', 'plugins', 'zapier', 'wordpress',
-        'shopify', 'sdk', 'developer docs', 'endpoints', 'documentation api', 
-        'third party', 'sync data', 'export logs'
-      ]
-
-      // Tier 10: Service Level Agreements (SLA) & Policy Queries
-      const policyKeywords = [
-        'sla', 'service level', 'refund policy', 'terms of service', 'tos',
-        'privacy policy', 'guarantee', 'uptime', 'warranty', 'cancellation policy',
-        'legal agreement', 'user agreement'
-      ]
-
-      // Tier 11: Core Capabilities Matrix
-      const capabilityKeywords = [
-        'what can you do', 'help me', 'options', 'features', 'how do you work',
-        'menu', 'capabilities', 'show me what you can do', 'explain your features',
-        'how to use this', 'instructions', 'guide me'
-      ]
-
-      // Tier 12: Feedback, Praise, and Neutral Interactions
-      const feedbackKeywords = [
-        'feedback', 'suggestion', 'complaint', 'recommendation', 'good job',
-        'you are great', 'bad ai', 'silly bot', 'review', 'feature request'
-      ]
-
-      // Tier 13: Session Termination, Sign-Off & Farewell Matrix
-      const closingKeywords = [
-        'bye', 'goodbye', 'see ya', 'im done', 'end chat', 'close chat', 
-        'nothing else', 'that is all', 'thats all', 'stop', 'quit', 'exit', 
-        'have a good day', 'have a nice day', 'ciao', 'talk later', 'disconnect'
-      ]
-
-      // Tier 14: Content Safety, Abuse & Frustration Interceptors
-      const frustrationKeywords = [
-        'useless', 'stupid', 'horrible', 'terrible', 'waste of time', 'sucks',
-        'bad support', 'annoying', 'hate', 'disappointed', 'rubbish', 'nonsense',
-        'garbage', 'pathetic', 'idiot', 'worst app', 'ridiculous'
-      ]
-
-      // Resolve Day of Week safely
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-      const currentDay = days[new Date().getDay()]
-
-      /* -------------------------------------------------------------------------- */
-      /* ⚡ SEMANTIC MATRIX PATTERN MATCHING ENGINE                                 */
-      /* -------------------------------------------------------------------------- */
-
-      // 1. Immediate Safety / Frustration Management Fallback Interceptor
-      if (frustrationKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'I apologize for any frustration this experience has caused. Let me immediately hand your active session over to a live human operator to resolve this context for you thoroughly.',
-          confidence: 1.0,
-          shouldEscalate: true,
-        }
+      if (
+        angryWords.some(w =>
+          cleanInput.includes(w),
+        )
+      ) {
+        return createResponse(
+          "I'm sorry this has been frustrating. I'd be happy to connect you with a support specialist.",
+          1,
+          true,
+        )
       }
 
-      // 2. Direct Evaluation Checks for High-Priority Human Interception Requests
-      if (directEscalationKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'I can route you to an active support operator immediately. Would you like to transition to our live human support team right now? (Please type \'Yes\' to proceed)',
-          confidence: 1.0,
-          shouldEscalate: true,
-        }
+      if (
+        sadWords.some(w =>
+          cleanInput.includes(w),
+        )
+      ) {
+        return createResponse(
+          "I'm sorry you're going through that. I'll do my best to help.",
+        )
       }
 
-      // 3. Exact matching or token-proximity containment checks across tiers
-      if (greetings.includes(cleanInput) || greetings.some(g => cleanInput === g)) {
-        return {
-          reply: `Hello! Thank you for reaching out to us on this fine ${currentDay}. How can I assist you today?`,
-          confidence: 1.0,
-          shouldEscalate: false,
-        }
+      /* HUMAN */
+
+      if (
+        humanWords.some(w =>
+          cleanInput.includes(w),
+        )
+      ) {
+        return createResponse(
+          randomResponse(
+            escalationResponses,
+          ),
+          1,
+          true,
+        )
       }
 
-      if (appreciation.includes(cleanInput) || appreciation.some(a => cleanInput === a)) {
-        return {
-          reply: "You're very welcome! Please let me know if there's anything else I can assist you with today.",
-          confidence: 1.0,
-          shouldEscalate: false,
-        }
+      /* KNOWLEDGE BASE */
+
+      const kb =
+        await KnowledgeBaseService.testSandboxQuery(
+          '',
+          propertyId,
+          message,
+        )
+
+      const settings =
+        await KnowledgeBaseService.getKnowledgeBase(
+          '',
+          propertyId,
+        )
+
+      const threshold =
+        settings.confidenceThreshold ??
+        0.8
+
+      if (
+        kb.matched &&
+        kb.confidenceScore >= threshold
+      ) {
+        return createResponse(
+          kb.answer,
+          kb.confidenceScore,
+        )
       }
 
-      if (botIdentity.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'I am an automated AI assistant running alongside our live support staff. I can answer technical questions and account lookups immediately, or route you to a human operator whenever you ask!',
-          confidence: 1.0,
-          shouldEscalate: false,
-        }
-      }
+      /* FALLBACK */
 
-      if (salesIntentKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'It looks like you are looking into pricing structures, service tiers, or purchase pathways! I can review baseline parameters from our vector documentation, or pull a live account specialist into this conversation. What specifics can I check for you?',
-          confidence: 0.95,
-          shouldEscalate: false,
-        }
-      }
+      return createResponse(
+        `${randomResponse(
+          fallbackResponses,
+        )}
 
-      if (operationsKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'Looking for our operational schedules, support hours, or physical logistics directory? Let me pull up our official logistics registry metadata right away.',
-          confidence: 0.95,
-          shouldEscalate: false,
-        }
-      }
-
-      if (technicalKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'It looks like you are experiencing an unexpected system crash, service interruption, or runtime error. Let me scan our technical troubleshooting indexes for immediate fixes.',
-          confidence: 0.95,
-          shouldEscalate: false,
-        }
-      }
-
-      if (accountKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'I can guide you through profile updates, secure billing adjustments, or authorization settings. For direct credential changes or sensitive manual overrides, I can route you directly to an administrator.',
-          confidence: 0.95,
-          shouldEscalate: false,
-        }
-      }
-
-      if (integrationKeywords.some(keyword => cleanInput.includes(keyword) || inputTokens.includes(keyword))) {
-        return {
-          reply: 'Looking into our developer resources, API integrations, or webhook endpoints? Let me extract our configuration schematics from the developer log repository.',
-          confidence: 0.95,
-          shouldEscalate: false,
-        }
-      }
-
-      if (policyKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'Let me look up our official terms, SLA operational window metrics, and refund policies within our compliance registry.',
-          confidence: 0.95,
-          shouldEscalate: false,
-        }
-      }
-
-      if (capabilityKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'I am optimized to walk you through platform guides, clarify billing rules, diagnose integrations, map operational logistics, or pass you straight to a live specialist. What challenge are we tackling today?',
-          confidence: 1.0,
-          shouldEscalate: false,
-        }
-      }
-
-      if (feedbackKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'Thank you for your valuable feedback! We monitor all system reports carefully to optimize platform efficiency. I am saving your notes directly into our review tracking matrix.',
-          confidence: 1.0,
-          shouldEscalate: false,
-        }
-      }
-
-      if (closingKeywords.some(keyword => cleanInput.includes(keyword))) {
-        return {
-          reply: 'Thank you for connecting with us today! Have an excellent rest of your day. Feel free to restart the thread if any new questions arise.',
-          confidence: 1.0,
-          shouldEscalate: false,
-        }
-      }
-
-      /* -------------------------------------------------------------------------- */
-      /* 🔍 KNOWLEDGE BASE VECTOR SEARCH MATRICES                                   */
-      /* -------------------------------------------------------------------------- */
-      const kbResult = await KnowledgeBaseService.testSandboxQuery('', propertyId, message)
-      const kbSettings = await KnowledgeBaseService.getKnowledgeBase('', propertyId)
-      const threshold = kbSettings.confidenceThreshold ?? 0.8
-
-      if (kbResult.matched && kbResult.confidenceScore >= threshold) {
-        return {
-          reply: kbResult.answer,
-          confidence: kbResult.confidenceScore,
-          shouldEscalate: false,
-        }
-      }
-
-      /* -------------------------------------------------------------------------- */
-      /* 🚨 ESCALATION MANAGEMENT WORKFLOW                                         */
-      /* -------------------------------------------------------------------------- */
-      logger.info(
-        { propertyId, sessionId: session._id },
-        'AI confidence threshold breach. Offering handoff question.',
+Would you like me to connect you with one of our support specialists?`,
+        kb.confidenceScore ?? 0,
+      )
+    } catch (error) {
+      logger.error(
+        error,
+        'AI service error',
       )
 
-      const baseFallback =
-        kbSettings.fallbackMessage ||
-        "I want to make sure you get the absolute best answer. I don't have the explicit information matching your request directly within my system logs."
-
-      const transferQuestion =
-        "\n\nWould you like me to transfer your session immediately to an available live support operator? (Please type 'Yes' to proceed)"
-
-      return {
-        reply: `${baseFallback}${transferQuestion}`,
-        confidence: kbResult.confidenceScore,
-        shouldEscalate: true,
-      }
-    } catch (error) {
-      logger.error(error, 'Error in AIService processing loop')
-      return {
-        reply: 'I am experiencing an internal communication update. Let me transfer you straight to a member of our human support team...',
-        confidence: 0,
-        shouldEscalate: true,
-      }
+      return createResponse(
+        'I am experiencing an internal communication issue. Let me connect you with our support team.',
+        0,
+        true,
+      )
     }
   }
 
-  static shouldEscalate(confidence: number, threshold = 0.8) {
+  static shouldEscalate(
+    confidence: number,
+    threshold = 0.8,
+  ) {
     return confidence < threshold
   }
 
-  static async updateSessionAutomationState(sessionId: string, aiEnabled: boolean) {
-    const session = await ChatSession.findById(sessionId)
+  static async updateSessionAutomationState(
+    sessionId: string,
+    aiEnabled: boolean,
+  ) {
+    const session =
+      await ChatSession.findById(
+        sessionId,
+      )
+
     if (!session) {
-      throw new AppError('Target chat session could not be located.', 404)
+      throw new AppError(
+        'Target chat session could not be located.',
+        404,
+      )
     }
 
     session.aiEnabled = aiEnabled
 
     if (!aiEnabled) {
       session.aiHandled = false
+
       if (!session.assignedOperatorId) {
         session.status = 'queued'
       }
@@ -360,4 +716,4 @@ export class AIService {
       status: session.status,
     }
   }
-        }
+}
