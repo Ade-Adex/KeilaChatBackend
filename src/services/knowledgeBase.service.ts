@@ -8,6 +8,9 @@ import type {
   FallbackStrategy,
 } from '../types/knowledgeBase.types.js'
 import KnowledgeBase from '../models/KnowledgeBase.js'
+import { detectIntent } from './ai/ai.intent.js'
+import { createEmbedding } from './ai/ai.embeddings.js'
+import { cosineSimilarity } from './ai/ai.cosine.js'
 
 export class KnowledgeBaseService {
   /**
@@ -78,17 +81,47 @@ export class KnowledgeBaseService {
       'Syncing complete knowledge base rules matrix',
     )
 
-    // Using query casting and spreading data ensures all new refactored fields map cleanly
-    const kb = (await KnowledgeBase.findOneAndUpdate(
-      { propertyId: new mongoose.Types.ObjectId(propertyId) },
+    const normalizedFaqs =
+      data.faqs?.map((faq) => ({
+        question: faq.question,
+        answer: faq.answer,
+        category: faq.category ?? 'General',
+        enabled: faq.enabled ?? true,
+        priority: faq.priority ?? 1,
+
+        keywords: faq.keywords ?? [],
+
+        intent: faq.intent ?? 'unknown',
+
+        entities: faq.entities ?? [],
+
+        embedding: faq.embedding ?? [],
+
+        embeddingModel: faq.embeddingModel ?? 'Xenova/all-MiniLM-L6-v2',
+
+        usageCount: faq.usageCount ?? 0,
+
+        lastMatchedAt: faq.lastMatchedAt,
+      })) ?? []
+
+    const kb = await KnowledgeBase.findOneAndUpdate(
+      {
+        propertyId: new mongoose.Types.ObjectId(propertyId),
+      },
       {
         $set: {
           accountId: new mongoose.Types.ObjectId(accountId),
-          ...data, // Automatically spreads and updates any properties passed from controller safely
+
+          ...data,
+
+          faqs: normalizedFaqs,
         },
       },
-      { new: true, upsert: true },
-    )) as IKnowledgeBase | null
+      {
+        new: true,
+        upsert: true,
+      },
+    )
 
     if (!kb) {
       throw new AppError(
@@ -106,14 +139,17 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Execute a simulation query against the stored FAQs
+   * Execute a semantic simulation query against the stored FAQs
    */
   static async testSandboxQuery(
     accountId: string,
     propertyId: string,
     message: string,
-  ): Promise<{ matched: boolean; answer: string; confidenceScore: number }> {
-    // Reuse your service's existing query engine to fetch configuration states
+  ): Promise<{
+    matched: boolean
+    answer: string
+    confidenceScore: number
+  }> {
     const kb = await this.getKnowledgeBase(accountId, propertyId)
 
     if (!kb.isAiEnabled || kb.aiMode === 'disabled') {
@@ -126,45 +162,90 @@ export class KnowledgeBaseService {
     }
 
     const cleanInput = message.toLowerCase().trim()
-    let bestMatch = null
-    let maxMatchCount = 0
 
-    // Evaluate matches across enabled matrix records
-    for (const faq of kb.faqs || []) {
-      if (!faq.enabled) continue
+    const detectedIntent = detectIntent(cleanInput)
 
-      let score = 0
+    const queryEmbedding = await createEmbedding(cleanInput)
 
-      // Check keyword array tags
-      if (faq.keywords && faq.keywords.length > 0) {
-        faq.keywords.forEach((kw) => {
-          if (cleanInput.includes(kw.toLowerCase())) score += 2
-        })
+    let bestMatch: IFaqItem | null = null
+
+    let bestScore = 0
+
+    for (const faq of kb.faqs ?? []) {
+      if (!faq.enabled) {
+        continue
       }
 
-      // Direct text phrase overlaps
+      let semanticScore = 0
+      let keywordScore = 0
+      let textScore = 0
+      let intentScore = 0
+
+      /*
+       * SEMANTIC MATCHING
+       */
+      if (faq.embedding && faq.embedding.length > 0) {
+        semanticScore = cosineSimilarity(queryEmbedding, faq.embedding)
+      }
+
+      /*
+       * KEYWORD MATCHING
+       */
+      if (faq.keywords && faq.keywords.length) {
+        for (const keyword of faq.keywords) {
+          if (cleanInput.includes(keyword.toLowerCase())) {
+            keywordScore += 0.1
+          }
+        }
+      }
+
+      /*
+       * DIRECT QUESTION OVERLAP
+       */
+      const faqQuestion = faq.question.toLowerCase()
+
       if (
-        faq.question.toLowerCase().includes(cleanInput) ||
-        cleanInput.includes(faq.question.toLowerCase())
+        faqQuestion.includes(cleanInput) ||
+        cleanInput.includes(faqQuestion)
       ) {
-        score += 3
+        textScore = 0.2
       }
 
-      if (score > maxMatchCount) {
-        maxMatchCount = score
+      /*
+       * INTENT BONUS
+       */
+      if (faq.intent && faq.intent === detectedIntent) {
+        intentScore = 0.15
+      }
+
+      /*
+       * FINAL CONFIDENCE
+       *
+       * semantic = 70%
+       * keywords = 10%
+       * direct text = 5%
+       * intent = 15%
+       */
+      const confidence =
+        semanticScore * 0.7 +
+        keywordScore * 0.1 +
+        textScore * 0.05 +
+        intentScore * 0.15
+
+      if (confidence > bestScore) {
+        bestScore = confidence
+
         bestMatch = faq
       }
     }
 
-    const fallbackThreshold = kb.confidenceThreshold ?? 0.8
-    const simulatedScore =
-      maxMatchCount > 0 ? Math.min(0.7 + maxMatchCount * 0.1, 0.98) : 0.0
+    const threshold = kb.confidenceThreshold ?? 0.65
 
-    if (bestMatch && simulatedScore >= fallbackThreshold) {
+    if (bestMatch && bestScore >= threshold) {
       return {
         matched: true,
         answer: bestMatch.answer,
-        confidenceScore: simulatedScore,
+        confidenceScore: Number(bestScore.toFixed(4)),
       }
     }
 
@@ -173,7 +254,28 @@ export class KnowledgeBaseService {
       answer:
         kb.fallbackMessage ||
         'Sorry, I could not find a clear match inside our data records.',
-      confidenceScore: simulatedScore,
+      confidenceScore: Number(bestScore.toFixed(4)),
     }
+  }
+
+  static async searchByIntent(
+    propertyId: string,
+    intent: string,
+  ): Promise<IFaqItem[]> {
+    const kb = await KnowledgeBase.findOne({
+      propertyId: new mongoose.Types.ObjectId(propertyId),
+    }).lean()
+
+    if (!kb) {
+      return []
+    }
+
+    const faqs = (kb.faqs ?? []).filter((faq) => faq.enabled)
+
+    if (intent === 'unknown') {
+      return faqs
+    }
+
+    return faqs.filter((faq) => faq.intent === intent)
   }
 }

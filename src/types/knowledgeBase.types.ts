@@ -13,7 +13,21 @@ export interface IFaqItem {
   enabled: boolean
   priority: number
   keywords: string[]
+
+  intent?: string
+
+  entities?: string[]
+
+  embedding?: number[]
+
+  embeddingModel?: string
+
+  usageCount?: number
+
+  lastMatchedAt?: Date
+
   createdAt?: Date
+
   updatedAt?: Date
 }
 

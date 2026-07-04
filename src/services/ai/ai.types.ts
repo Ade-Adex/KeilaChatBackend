@@ -15,4 +15,16 @@ export interface AIMemory {
   lastIntent?: string
   lastEmotion?: string
   lastTopic?: string
+  lastQuestion?: string
+  lastAnswer?: string
+  history?: string[]
+}
+
+export interface KnowledgeCandidate {
+  question: string
+  answer: string
+  intent: string
+  keywords: string[]
+  embedding?: number[]
+  score?: number
 }

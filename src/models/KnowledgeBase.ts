@@ -43,6 +43,45 @@ const FaqItemSchema = new Schema<IFaqItem>(
         lowercase: true,
       },
     ],
+
+    /*
+     * NEW
+     */
+
+    intent: {
+      type: String,
+      default: 'unknown',
+      lowercase: true,
+      index: true,
+    },
+
+    entities: [
+      {
+        type: String,
+        lowercase: true,
+        trim: true,
+      },
+    ],
+
+    embedding: [
+      {
+        type: Number,
+      },
+    ],
+
+    embeddingModel: {
+      type: String,
+      default: 'Xenova/all-MiniLM-L6-v2',
+    },
+
+    usageCount: {
+      type: Number,
+      default: 0,
+    },
+
+    lastMatchedAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
@@ -147,6 +186,21 @@ KnowledgeBaseSchema.index({
 KnowledgeBaseSchema.index({
   accountId: 1,
   isAiEnabled: 1,
+})
+
+KnowledgeBaseSchema.index({
+  propertyId: 1,
+  'faqs.intent': 1,
+})
+
+KnowledgeBaseSchema.index({
+  propertyId: 1,
+  'faqs.category': 1,
+})
+
+KnowledgeBaseSchema.index({
+  propertyId: 1,
+  'faqs.enabled': 1,
 })
 
 export default (mongoose.models?.KnowledgeBase ||
