@@ -23,11 +23,11 @@ export interface PropertySettings {
 }
 
 export interface WidgetSettings {
-  aiName?: string
-  
+  aiName?: string | undefined
+
   launcherPosition: 'bottom-right' | 'bottom-left'
 
-  launcherIcon?: string
+  launcherIcon?: string | undefined
 
   welcomeMessage: string
 
