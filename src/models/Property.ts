@@ -57,6 +57,12 @@ const PropertySchema = new Schema<IProperty>(
 
       launcherIcon: String,
 
+      aiName: {
+        type: String,
+        default: 'AI Assistant',
+        trim: true,
+      },
+
       welcomeMessage: {
         type: String,
         default: 'Hi 👋 How can we help?',
