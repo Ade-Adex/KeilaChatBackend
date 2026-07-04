@@ -2,16 +2,19 @@
 
 import ChatSession from '../models/ChatSession.js'
 import Operator from '../models/Operator.js'
-import Message from '../models/Message.js' 
+import Message from '../models/Message.js'
 
-import { sendMessage } from './message.service.js'
+import { sendMessage, createSystemMessage } from './message.service.js'
 import { EventService } from './event.service.js'
 import { QueueService } from './queue.service.js'
 import { AssignmentService } from './assignment.service.js'
-import { AIService } from './ai.service.js' 
+import { AIService } from './ai.service.js'
+import { getAvailableOperators } from './operator.service.js'
 
 import { AppError } from './appError.js'
 import type { MessageType } from '../types/message.types.js'
+import { Types } from 'mongoose'
+import Property from '../models/Property.js'
 
 export interface ProcessMessagePayload {
   sessionId: string
@@ -58,7 +61,9 @@ export class MessagePipeline {
       options,
     )
 
-    const messagePayload = message.toObject ? message.toObject() : { ...message }
+    const messagePayload = message.toObject
+      ? message.toObject()
+      : { ...message }
 
     /*
      ****************************************
@@ -93,28 +98,166 @@ export class MessagePipeline {
      */
     if (senderType === 'visitor') {
       if (session.aiEnabled && !session.assignedOperatorId) {
-        
         const cleanText = messageText.toLowerCase().trim()
-        const isConfirmingTransfer = 
-          cleanText === 'yes' || 
-          cleanText.includes('transfer') || 
-          cleanText.includes('agent') || 
+        const isConfirmingTransfer =
+          cleanText === 'yes' ||
+          cleanText.includes('transfer') ||
+          cleanText.includes('agent') ||
           cleanText.includes('human')
 
+        /*
+         * SUCCESSFUL LIVE HANDOFF ASSIGNMENT LOGIC
+         */
         if (session.status === 'waiting' && isConfirmingTransfer) {
-          session.aiEnabled = false
-          session.aiEscalated = true
-          session.status = 'queued'
-          await session.save()
+          // 🔍 FIX 1: Look up the associated property to retrieve its correct accountId
+          const propertyDoc = await Property.findById(session.propertyId)
+            .select('accountId')
+            .lean()
+          const accountIdStr = propertyDoc?.accountId
+            ? propertyDoc.accountId.toString()
+            : ''
+
+          // Check for active, unburdened operators assigned to this account context
+          const availableOperators = await getAvailableOperators(accountIdStr)
+
+          // 🔍 FIX 2: Guard element lookup checking both length and absolute truthiness
+          if (
+            availableOperators &&
+            availableOperators.length > 0 &&
+            availableOperators[0]
+          ) {
+            // Pick the operator with the lowest active chat count
+            const targetOperator = availableOperators[0]
+            const targetOperatorId = targetOperator._id.toString()
+
+            // Update session document inline properties matching cross-operator handoff requirements
+            session.aiEnabled = false
+            session.aiEscalated = true
+            session.status = 'active'
+            session.assignedOperatorId = new Types.ObjectId(targetOperatorId)
+            await session.save()
+
+            // Atomically increment operator workload count
+            await Operator.updateOne(
+              { _id: targetOperatorId },
+              { $inc: { activeChatsCount: 1 } },
+            )
+
+            // Persist structural system message context to the database timeline
+            const transferText =
+              `Chat was transferred from AI to ${targetOperator.firstName || ''} ${targetOperator.lastName || ''}`.trim()
+            const systemNotice = await createSystemMessage(
+              sessionId,
+              transferText,
+            )
+
+            // Broadcast structural changes down socket clients instantly
+            const room = `session:${sessionId}`
+            EventService.emitToSession(
+              sessionId,
+              'new_message',
+              systemNotice.toObject ? systemNotice.toObject() : systemNotice,
+            )
+            EventService.emitToSession(sessionId, 'session_status_changed', {
+              sessionId,
+              status: 'active',
+            })
+
+            // Force dynamic binding entry inside active socket rooms over the air
+            const { PresenceService } = await import('./presence.service.js')
+            const operatorSocketId =
+              await PresenceService.getOperatorSocket(targetOperatorId)
+
+            if (operatorSocketId && EventService.io) {
+              const activeSocket =
+                EventService.io.sockets.sockets.get(operatorSocketId)
+              if (activeSocket) {
+                activeSocket.join(room)
+                activeSocket.join(`property:dashboard:${propertyId}`)
+              }
+            }
+
+            // Sync structural parameters across global monitoring control rooms
+            EventService.emitToOperator(targetOperatorId, 'chat_assigned', {
+              sessionId,
+              propertyId,
+              operatorId: targetOperatorId,
+              operator: {
+                firstName: targetOperator.firstName,
+                lastName: targetOperator.lastName,
+                avatar: targetOperator.avatar,
+              },
+            })
+
+            EventService.emitToProperty(
+              propertyId,
+              'dashboard_refresh_request',
+              {},
+            )
+            return messagePayload
+          } else {
+            /*
+             * FALLBACK: NO OPERATORS ONLINE OR AVAILABLE
+             */
+            const fallbackReply =
+              'I am ready to transfer you, but all of our support representatives are currently offline or handling other inquiries. Please hold, or leave your message here and an agent will follow up with you as soon as possible.'
+
+            const aiFallbackMsg = await sendMessage(
+              sessionId,
+              'ai',
+              'ai_agent',
+              fallbackReply,
+              {
+                messageType: 'text',
+                isFromAI: true,
+              },
+            )
+
+            const aiFallbackPayload = aiFallbackMsg.toObject
+              ? aiFallbackMsg.toObject()
+              : { ...aiFallbackMsg }
+
+            // Dispatch notification windows down UI streams
+            EventService.emitToSession(
+              sessionId,
+              'new_message',
+              aiFallbackPayload,
+            )
+
+            // Queue session for human overview triage when someone returns online
+            session.status = 'queued'
+            session.aiEnabled = false
+            session.aiEscalated = true
+            await session.save()
+
+            await QueueService.addToQueue(propertyId, sessionId)
+            EventService.emitToProperty(propertyId, 'dashboard_chat_queued', {
+              sessionId,
+            })
+
+            return messagePayload
+          }
         } else {
-          const history = await Message.find({ sessionId }).sort({ createdAt: 1 }).limit(10).lean()
+          // Standard AI generation loop rules execution context...
+          const history = await Message.find({ sessionId })
+            .sort({ createdAt: 1 })
+            .limit(10)
+            .lean()
           const aiResult = await AIService.generateReply(messageText, history)
 
-          const aiMessage = await sendMessage(sessionId, 'ai', 'ai_agent', aiResult.reply, {
-            messageType: 'text',
-            isFromAI: true,
-          })
-          const aiPayload = aiMessage.toObject ? aiMessage.toObject() : { ...aiMessage }
+          const aiMessage = await sendMessage(
+            sessionId,
+            'ai',
+            'ai_agent',
+            aiResult.reply,
+            {
+              messageType: 'text',
+              isFromAI: true,
+            },
+          )
+          const aiPayload = aiMessage.toObject
+            ? aiMessage.toObject()
+            : { ...aiMessage }
 
           EventService.emitToSession(sessionId, 'new_message', aiPayload)
           EventService.emitToProperty(propertyId, 'dashboard_message_update', {
@@ -124,13 +267,13 @@ export class MessagePipeline {
 
           if (aiResult.shouldEscalate) {
             await ChatSession.findByIdAndUpdate(sessionId, {
-              status: 'waiting', 
-              aiHandled: false
+              status: 'waiting',
+              aiHandled: false,
             })
           } else {
             await ChatSession.findByIdAndUpdate(sessionId, {
               status: 'active',
-              aiHandled: true
+              aiHandled: true,
             })
           }
 
@@ -140,40 +283,58 @@ export class MessagePipeline {
 
       /*
        ****************************************
-       * STEP 5: Live Human Operator Auto-assignment
+       * STEP 5: Live Human Operator Auto-assignment (Standard Fallback Check)
        ****************************************
        */
       session = await ChatSession.findById(sessionId)
 
-      // 🛡️ TS FIX: Handle hypothetical case where session document was completely removed mid-flight
       if (!session) {
-        throw new AppError('Chat session context vanished during processing pipeline execution.', 404)
+        throw new AppError(
+          'Chat session context vanished during processing pipeline execution.',
+          404,
+        )
       }
 
       if (!session.assignedOperatorId && !session.aiEnabled) {
-        const operator = await AssignmentService.assignOperatorToSession(propertyId, sessionId)
+        const operator = await AssignmentService.assignOperatorToSession(
+          propertyId,
+          sessionId,
+        )
 
         if (operator) {
-          const opDetails = await Operator.findById(operator._id).select('firstName lastName avatar').lean()
+          const opDetails = await Operator.findById(operator._id)
+            .select('firstName lastName avatar')
+            .lean()
 
-          EventService.emitToOperator(operator._id.toString(), 'chat_assigned', {
-            sessionId,
-            propertyId,
-            operatorId: operator._id,
-            operator: opDetails,
-          })
+          EventService.emitToOperator(
+            operator._id.toString(),
+            'chat_assigned',
+            {
+              sessionId,
+              propertyId,
+              operatorId: operator._id,
+              operator: opDetails,
+            },
+          )
 
           const { PresenceService } = await import('./presence.service.js')
-          const operatorSocketId = await PresenceService.getOperatorSocket(operator._id.toString())
+          const operatorSocketId = await PresenceService.getOperatorSocket(
+            operator._id.toString(),
+          )
 
           if (operatorSocketId && EventService.io) {
-            const activeSocket = EventService.io.sockets.sockets.get(operatorSocketId)
+            const activeSocket =
+              EventService.io.sockets.sockets.get(operatorSocketId)
             if (activeSocket) {
               activeSocket.join(`session:${sessionId}`)
             }
           }
 
-          EventService.emitToOperator(operator._id.toString(), 'new_message', messagePayload)
+          EventService.emitToOperator(
+            operator._id.toString(),
+            'new_message',
+            messagePayload,
+          )
           EventService.emitToProperty(propertyId, 'dashboard_chat_assigned', {
             sessionId,
             operatorId: operator._id,
@@ -181,10 +342,16 @@ export class MessagePipeline {
         } else {
           await QueueService.addToQueue(propertyId, sessionId)
           await ChatSession.findByIdAndUpdate(sessionId, { status: 'queued' })
-          EventService.emitToProperty(propertyId, 'dashboard_chat_queued', { sessionId })
+          EventService.emitToProperty(propertyId, 'dashboard_chat_queued', {
+            sessionId,
+          })
         }
       } else if (session.assignedOperatorId) {
-        EventService.emitToOperator(session.assignedOperatorId.toString(), 'new_message', messagePayload)
+        EventService.emitToOperator(
+          session.assignedOperatorId.toString(),
+          'new_message',
+          messagePayload,
+        )
       }
     }
 
