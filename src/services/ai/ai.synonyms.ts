@@ -1,6 +1,5 @@
 // /src/services/ai/ai.synonyms.ts
 
-
 export const synonyms = {
   register: [
     'signup',
@@ -17,4 +16,44 @@ export const synonyms = {
   payment: ['pay', 'transfer', 'send'],
 
   company: ['about', 'what is', 'explain', 'describe'],
+
+  football: [
+    'football',
+    'soccer',
+    'club',
+    'team',
+
+    'arsenal',
+    'arsenal fc',
+    'gunners',
+
+    'chelsea',
+    'chelsea fc',
+    'blues',
+
+    'liverpool',
+    'liverpool fc',
+    'reds',
+
+    'manchester united',
+    'man utd',
+    'man united',
+    'red devils',
+
+    'manchester city',
+    'man city',
+    'citizens',
+
+    'real madrid',
+    'los blancos',
+
+    'barcelona',
+    'barca',
+
+    'bayern',
+    'bayern munich',
+
+    'psg',
+    'paris saint germain',
+  ],
 }

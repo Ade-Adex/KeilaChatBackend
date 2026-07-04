@@ -53,8 +53,9 @@ export class AIService {
       const memory = getMemory(sessionId)
 
       /* STATIC ENTERPRISE INTENTS */
-      for (const intent of enterpriseIntents) {
-        const matched = intent.patterns.some((pattern) => {
+
+      for (const enterpriseIntent of enterpriseIntents) {
+        const matched = enterpriseIntent.patterns.some((pattern) => {
           const p = normalizeInput(pattern)
           const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
@@ -62,23 +63,44 @@ export class AIService {
         })
 
         if (matched) {
-          return createResponse(randomResponse(intent.responses))
+          return createResponse(randomResponse(enterpriseIntent.responses))
         }
       }
 
+      /* INTENT DETECTION */
+
+      const intent = detectIntent(cleanInput)
+
+      setMemory(sessionId, {
+        lastIntent: intent,
+      })
+
       /* FOOTBALL INTENTS */
 
-      for (const intent of footballIntents) {
-        const matched = intent.patterns.some((pattern) => {
-          const p = normalizeInput(pattern)
-          const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      if (intent === 'football') {
+        for (const club of footballIntents) {
+          const matched = club.patterns.some((pattern) => {
+            const p = normalizeInput(pattern)
 
-          return new RegExp(`\\b${escaped}\\b`, 'i').test(cleanInput)
-        })
+            const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-        if (matched) {
-          return createResponse(randomResponse(intent.responses))
+            return new RegExp(`\\b${escaped}\\b`, 'i').test(cleanInput)
+          })
+
+          if (matched) {
+            setMemory(sessionId, {
+              lastTopic: 'football',
+            })
+
+            return createResponse(randomResponse(club.responses), 1, false)
+          }
         }
+
+        return createResponse(
+          'I can provide basic information about football clubs, leagues, players, and competitions.',
+          1,
+          false,
+        )
       }
 
       /* EMOTION DETECTION */
@@ -110,14 +132,6 @@ export class AIService {
       if (humanWords.some((word) => cleanInput.includes(word))) {
         return createResponse(randomResponse(escalationResponses), 1, true)
       }
-
-      /* INTENT DETECTION */
-
-      const intent = detectIntent(cleanInput)
-
-      setMemory(sessionId, {
-        lastIntent: intent,
-      })
 
       /* KNOWLEDGE RETRIEVAL */
 

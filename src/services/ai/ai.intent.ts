@@ -1,5 +1,4 @@
-// /src/services/ai/ai.intent.ts
-
+// ai.intent.ts
 
 import { synonyms } from './ai.synonyms.js'
 import { tokenize } from './ai.tokenizer.js'
