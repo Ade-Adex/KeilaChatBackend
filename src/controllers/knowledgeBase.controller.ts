@@ -177,19 +177,23 @@ export const crawlPropertyUrls = catchAsync(
         (s) => s.url === targetUrl,
       )
 
-      // 🎯 FIX 1: Extract to a variable and check existence explicitly
       if (existingSourceIndex !== -1) {
         const existingSource = kb.crawledSources[existingSourceIndex]
         if (existingSource) {
           existingSource.status = 'pending'
+          existingSource.errorMessage = ''
+          existingSource.chunks = []
         }
       } else {
         kb.crawledSources.push({
           url: targetUrl,
+          title: '',
           rawContent: 'Processing index queue...',
           status: 'pending',
+          errorMessage: '',
           lastScrapedAt: new Date(),
-        } as any)
+          chunks: [],
+        })
       }
 
       await kb.save()
@@ -203,14 +207,45 @@ export const crawlPropertyUrls = catchAsync(
         (s) => s.url === targetUrl,
       )
 
-      // 🎯 FIX 2: Check existence explicitly here as well before mutation
       if (updateIndex !== -1) {
         const sourceToUpdate = kb.crawledSources[updateIndex]
         if (sourceToUpdate) {
           sourceToUpdate.title = result.title
-          sourceToUpdate.rawContent = result.rawContent
+          sourceToUpdate.rawContent = result.rawContent || ''
           sourceToUpdate.status = result.success ? 'scraped' : 'failed'
           sourceToUpdate.lastScrapedAt = new Date()
+          sourceToUpdate.chunks = []
+
+          if (result.success && result.rawContent) {
+            try {
+              // Split text cleanly by sentence double-breaks or periods
+              const paragraphs = result.rawContent
+                .split(/\n\s*\n|\.\s+/)
+                .map((p) => p.trim())
+                .filter((p) => p.length > 20)
+
+              const { createEmbedding } =
+                await import('../services/ai/ai.embeddings.js')
+
+              for (const textChunk of paragraphs) {
+                const vector = await createEmbedding(textChunk)
+                sourceToUpdate.chunks.push({
+                  text: textChunk,
+                  embedding: vector,
+                })
+              }
+            } catch (embedError) {
+              const msg =
+                embedError instanceof Error
+                  ? embedError.message
+                  : 'Embedding error'
+              sourceToUpdate.status = 'failed'
+              sourceToUpdate.errorMessage = `Embedding generation error: ${msg}`
+            }
+          } else if (!result.success) {
+            sourceToUpdate.errorMessage =
+              'Web page unreachable or scraper blocked.'
+          }
 
           await kb.save()
         }
@@ -218,3 +253,4 @@ export const crawlPropertyUrls = catchAsync(
     }
   },
 )
+

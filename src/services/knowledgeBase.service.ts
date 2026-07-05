@@ -139,148 +139,7 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Execute a semantic simulation query against the stored FAQs
-   */
-  static async testSandboxQuery(
-    accountId: string,
-    propertyId: string,
-    message: string,
-  ): Promise<{
-    matched: boolean
-    answer: string
-    confidenceScore: number
-  }> {
-    const kb = await this.getKnowledgeBase(accountId, propertyId)
-
-    if (!kb.isAiEnabled || kb.aiMode === 'disabled') {
-      return {
-        matched: false,
-        answer:
-          'AI processing or active knowledge matching functions are offline.',
-        confidenceScore: 0,
-      }
-    }
-
-    const cleanInput = message.toLowerCase().trim()
-
-    const detectedIntent = detectIntent(cleanInput)
-
-    const queryEmbedding = await createEmbedding(cleanInput)
-
-    let bestMatch: IFaqItem | null = null
-
-    let bestScore = 0
-
-    for (const faq of kb.faqs ?? []) {
-      if (!faq.enabled) {
-        continue
-      }
-
-      let semanticScore = 0
-      let keywordScore = 0
-      let textScore = 0
-      let intentScore = 0
-
-      /*
-       * SEMANTIC MATCHING
-       */
-      if (faq.embedding && faq.embedding.length > 0) {
-        semanticScore = cosineSimilarity(queryEmbedding, faq.embedding)
-      }
-
-      /*
-       * KEYWORD MATCHING
-       */
-      if (faq.keywords && faq.keywords.length) {
-        for (const keyword of faq.keywords) {
-          if (cleanInput.includes(keyword.toLowerCase())) {
-            keywordScore += 0.1
-          }
-        }
-      }
-
-      /*
-       * DIRECT QUESTION OVERLAP
-       */
-      const faqQuestion = faq.question.toLowerCase()
-
-      if (
-        faqQuestion.includes(cleanInput) ||
-        cleanInput.includes(faqQuestion)
-      ) {
-        textScore = 0.2
-      }
-
-      /*
-       * INTENT BONUS
-       */
-      if (faq.intent && faq.intent === detectedIntent) {
-        intentScore = 0.15
-      }
-
-      /*
-       * FINAL CONFIDENCE
-       *
-       * semantic = 70%
-       * keywords = 10%
-       * direct text = 5%
-       * intent = 15%
-       */
-      const confidence =
-        semanticScore * 0.7 +
-        keywordScore * 0.1 +
-        textScore * 0.05 +
-        intentScore * 0.15
-
-      if (confidence > bestScore) {
-        bestScore = confidence
-
-        bestMatch = faq
-      }
-    }
-
-    const threshold = kb.confidenceThreshold ?? 0.65
-
-    if (bestMatch && bestScore >= threshold) {
-      return {
-        matched: true,
-        answer: bestMatch.answer,
-        confidenceScore: Number(bestScore.toFixed(4)),
-      }
-    }
-
-    return {
-      matched: false,
-      answer:
-        kb.fallbackMessage ||
-        'Sorry, I could not find a clear match inside our data records.',
-      confidenceScore: Number(bestScore.toFixed(4)),
-    }
-  }
-
-  static async searchByIntent(
-    propertyId: string,
-    intent: string,
-  ): Promise<IFaqItem[]> {
-    const kb = await KnowledgeBase.findOne({
-      propertyId: new mongoose.Types.ObjectId(propertyId),
-    }).lean()
-
-    if (!kb) {
-      return []
-    }
-
-    const faqs = (kb.faqs ?? []).filter((faq) => faq.enabled)
-
-    if (intent === 'unknown') {
-      return faqs
-    }
-
-    return faqs.filter((faq) => faq.intent === intent)
-  }
-
-  /**
-   * Scans scraped web sources for matching keyword contexts as a fallback resolution layers
+   * Scans crawled web page matrix elements to locate fallback answer patterns
    */
   static async searchWebContextFallback(
     propertyId: string,
@@ -294,55 +153,100 @@ export class KnowledgeBaseService {
       return { matched: false, answer: '', confidenceScore: 0 }
     }
 
-    // Only inspect successfully scraped items
-    const activeSources = kb.crawledSources.filter(
-      (s) => s.status === 'scraped',
-    )
-    let bestChunk = ''
+    const queryEmbedding = await createEmbedding(cleanInput)
+    let bestChunkText = ''
     let highestScore = 0
 
-    // Break clean input into singular clean keyword tags for matching evaluation
-    const keywords = cleanInput.split(/\s+/).filter((word) => word.length > 3)
+    for (const source of kb.crawledSources) {
+      if (source.status !== 'scraped' || !source.chunks) continue
 
-    for (const source of activeSources) {
-      if (!source.rawContent) continue
-
-      // Break long content pages down into clean sentence strings
-      const paragraphs = source.rawContent
-        .split(/[.\n]+/)
-        .map((p) => p.trim())
-        .filter(Boolean)
-
-      for (const paragraph of paragraphs) {
-        let matchCount = 0
-        const lowerParagraph = paragraph.toLowerCase()
-
-        for (const word of keywords) {
-          if (lowerParagraph.includes(word)) {
-            matchCount++
-          }
+      for (const chunk of source.chunks) {
+        const score = cosineSimilarity(queryEmbedding, chunk.embedding)
+        if (score > highestScore) {
+          highestScore = score
+          bestChunkText = chunk.text
         }
+      }
+    }
 
-        if (matchCount > 0) {
-          // Calculate basic match density metric
-          const score = matchCount / keywords.length
-          if (score > highestScore) {
-            highestScore = score
-            bestChunk = paragraph
+    return {
+      matched: highestScore >= 0.45,
+      answer: bestChunkText,
+      confidenceScore: highestScore,
+    }
+  }
+
+  /**
+   * Execute a sandbox semantic check query within the testing control panel drawer
+   */
+  static async testSandboxQuery(
+    accountId: string,
+    propertyId: string,
+    message: string,
+  ): Promise<{ matched: boolean; answer: string; confidenceScore: number }> {
+    const kb = await KnowledgeBase.findOne({
+      propertyId: new mongoose.Types.ObjectId(propertyId),
+    })
+
+    if (!kb) {
+      return {
+        matched: false,
+        answer: 'Knowledge base profile context missing.',
+        confidenceScore: 0,
+      }
+    }
+
+    const queryEmbedding = await createEmbedding(message)
+    let bestMatchText = ''
+    let highestSimilarity = 0
+    const thresholdScale = (kb.confidenceThreshold ?? 0.8) * 100
+
+    if (kb.crawledSources && Array.isArray(kb.crawledSources)) {
+      for (const source of kb.crawledSources) {
+        if (source.status !== 'scraped' || !source.chunks) continue
+
+        for (const chunk of source.chunks) {
+          const similarity = cosineSimilarity(queryEmbedding, chunk.embedding)
+          const similarityPercentage = Math.round(similarity * 100)
+
+          if (similarityPercentage > highestSimilarity) {
+            highestSimilarity = similarityPercentage
+            bestMatchText = chunk.text
           }
         }
       }
     }
 
-    // If we establish a strong contextual density match (e.g., > 30% keyword match overlap)
-    if (highestScore >= 0.3 && bestChunk) {
+    if (highestSimilarity >= thresholdScale && bestMatchText) {
       return {
         matched: true,
-        answer: `${bestChunk.trim()}.`,
-        confidenceScore: highestScore,
+        answer: bestMatchText,
+        confidenceScore: highestSimilarity / 100,
       }
     }
 
-    return { matched: false, answer: '', confidenceScore: 0 }
+    return {
+      matched: false,
+      answer:
+        'Match failed. Confidence index fell beneath threshold bounds. Route drop triggered to human queue logs.',
+      confidenceScore: highestSimilarity / 100,
+    }
+  }
+
+  /**
+   * Existing index search method
+   */
+  static async searchByIntent(
+    propertyId: string,
+    intent: string,
+  ): Promise<IFaqItem[]> {
+    const kb = await KnowledgeBase.findOne({
+      propertyId: new mongoose.Types.ObjectId(propertyId),
+    }).lean()
+
+    if (!kb) return []
+    const faqs = (kb.faqs ?? []).filter((faq) => faq.enabled)
+    if (intent === 'unknown') return faqs
+    return faqs.filter((faq) => faq.intent === intent)
   }
 }
