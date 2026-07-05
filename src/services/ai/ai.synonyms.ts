@@ -13,7 +13,7 @@ export const synonyms = {
 
   login: ['signin', 'sign in', 'log in', 'access'],
 
-  payment: ['pay', 'transfer', 'send'],
+  payment: ['pay', 'transfer', 'send', 'payboost'],
 
   company: ['about', 'what is', 'explain', 'describe'],
 

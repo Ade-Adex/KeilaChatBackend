@@ -334,6 +334,14 @@
 //   }
 // }
 
+
+
+
+
+
+
+// /src/services/ai.service.ts
+
 import ChatSession from '../models/ChatSession.js'
 import logger from '../bootstrap/logger.js'
 import { AppError } from './appError.js'
@@ -440,17 +448,22 @@ export class AIService {
         return createResponse(randomResponse(escalationResponses), 1, true)
       }
 
-      /* KNOWLEDGE RETRIEVAL */
-      const knowledge = await KnowledgeBaseService.searchByIntent(
+      /* KNOWLEDGE RETRIEVAL & HYBRID FETCH FALLBACK */
+      let knowledge = await KnowledgeBaseService.searchByIntent(
         propertyId,
         intent,
       )
 
-      // Get settings once upfront to establish our threshold configuration boundaries
-      const settings = await KnowledgeBaseService.getKnowledgeBase(
-        '',
-        propertyId,
-      )
+      // 🎯 FIX: If no intent matches, fallback to loading the document corpus for full vector scanning
+      if ((!knowledge || knowledge.length === 0) && intent === 'unknown') {
+        const fullKb = await KnowledgeBaseService.getKnowledgeBase('', propertyId)
+        if (fullKb && fullKb.faqs) {
+          knowledge = fullKb.faqs
+        }
+      }
+
+      // Get configuration limits for threshold checks
+      const settings = await KnowledgeBaseService.getKnowledgeBase('', propertyId)
       const threshold = settings?.confidenceThreshold ?? 0.8
 
       let bestFaqMatch: any = null
@@ -485,7 +498,7 @@ export class AIService {
         ranked.sort((a, b) => b.confidence - a.confidence)
         bestFaqMatch = ranked[0]
 
-        // If an FAQ matched above our threshold target value, use it directly!
+        // Check if an FAQ matched above our threshold targets
         if (bestFaqMatch && bestFaqMatch.confidence >= threshold) {
           setMemory(sessionId, {
             lastQuestion: message,
@@ -535,7 +548,7 @@ export class AIService {
         return createResponse(
           `Based on our website information:\n\n${webFallback.answer}`,
           webFallback.confidenceScore,
-          false, // Web chunk successfully matched; no structural escalation required
+          false,
         )
       }
 
@@ -543,7 +556,7 @@ export class AIService {
       return createResponse(
         `${randomResponse(fallbackResponses)}\n\nWould you like me to connect you with one of our support specialists?`,
         bestFaqMatch?.confidence ?? webFallback.confidenceScore ?? 0,
-        true, // Flag handoff to indicate that both the raw FAQ map and webpage scrapers dropped below boundaries
+        true,
       )
     } catch (error) {
       logger.error(error, 'AI service error')
