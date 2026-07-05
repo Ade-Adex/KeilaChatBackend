@@ -250,13 +250,36 @@ Would you like me to connect you with one of our support specialists?`,
         return createResponse(best.answer, best.confidence)
       }
 
-      /* FALLBACK */
+      /* -------------------------------------------------------------------------- */
+      /* 🎯 CRAWLED WEB CONTENT FALLBACK RESOLUTION LAYER                           */
+      /* -------------------------------------------------------------------------- */
+      const webFallback = await KnowledgeBaseService.searchWebContextFallback(
+        propertyId,
+        cleanInput,
+      )
+
+      if (webFallback.matched && webFallback.confidenceScore >= 0.4) {
+        setMemory(sessionId, {
+          lastQuestion: message,
+          lastAnswer: webFallback.answer,
+          lastTopic: 'website_scrape_match',
+        })
+
+        return createResponse(
+          `Based on our website information:\n\n${webFallback.answer}`,
+          webFallback.confidenceScore,
+          false, // Handled successfully, no immediate escalation required
+        )
+      }
+
+      /* HARD FALLBACK & HUMAN HANDOFF TRIAGE */
 
       return createResponse(
         `${randomResponse(fallbackResponses)}
 
 Would you like me to connect you with one of our support specialists?`,
         best?.confidence ?? 0,
+        true, // Trigger escalation flag because both FAQ matching and Web parsing failed
       )
     } catch (error) {
       logger.error(error, 'AI service error')

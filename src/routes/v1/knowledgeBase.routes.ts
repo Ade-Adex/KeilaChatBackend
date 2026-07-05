@@ -5,6 +5,7 @@ import {
   getSettings,
   updateSettings,
   testPlayground,
+  crawlPropertyUrls,
 } from '../../controllers/knowledgeBase.controller.js'
 import { authMiddleware } from '../../middleware/auth.middleware.js'
 import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
@@ -32,5 +33,8 @@ router.post('/', rbac('admin'), updateSettings)
 
 // 🎯 Route handling for the sandbox simulation matching engine
 router.post('/test', rbac('admin'), testPlayground)
+
+// (Resolves target workspace context matching your smart auto-lookup controller patterns)
+router.post('/crawl', crawlPropertyUrls)
 
 export default router

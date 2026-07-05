@@ -278,4 +278,71 @@ export class KnowledgeBaseService {
 
     return faqs.filter((faq) => faq.intent === intent)
   }
+
+  /**
+   * Scans scraped web sources for matching keyword contexts as a fallback resolution layers
+   */
+  static async searchWebContextFallback(
+    propertyId: string,
+    cleanInput: string,
+  ): Promise<{ matched: boolean; answer: string; confidenceScore: number }> {
+    const kb = await KnowledgeBase.findOne({
+      propertyId: new mongoose.Types.ObjectId(propertyId),
+    }).lean()
+
+    if (!kb || !kb.crawledSources || kb.crawledSources.length === 0) {
+      return { matched: false, answer: '', confidenceScore: 0 }
+    }
+
+    // Only inspect successfully scraped items
+    const activeSources = kb.crawledSources.filter(
+      (s) => s.status === 'scraped',
+    )
+    let bestChunk = ''
+    let highestScore = 0
+
+    // Break clean input into singular clean keyword tags for matching evaluation
+    const keywords = cleanInput.split(/\s+/).filter((word) => word.length > 3)
+
+    for (const source of activeSources) {
+      if (!source.rawContent) continue
+
+      // Break long content pages down into clean sentence strings
+      const paragraphs = source.rawContent
+        .split(/[.\n]+/)
+        .map((p) => p.trim())
+        .filter(Boolean)
+
+      for (const paragraph of paragraphs) {
+        let matchCount = 0
+        const lowerParagraph = paragraph.toLowerCase()
+
+        for (const word of keywords) {
+          if (lowerParagraph.includes(word)) {
+            matchCount++
+          }
+        }
+
+        if (matchCount > 0) {
+          // Calculate basic match density metric
+          const score = matchCount / keywords.length
+          if (score > highestScore) {
+            highestScore = score
+            bestChunk = paragraph
+          }
+        }
+      }
+    }
+
+    // If we establish a strong contextual density match (e.g., > 30% keyword match overlap)
+    if (highestScore >= 0.3 && bestChunk) {
+      return {
+        matched: true,
+        answer: `${bestChunk.trim()}.`,
+        confidenceScore: highestScore,
+      }
+    }
+
+    return { matched: false, answer: '', confidenceScore: 0 }
+  }
 }
