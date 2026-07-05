@@ -90,19 +90,12 @@ export class KnowledgeBaseService {
         category: faq.category ?? 'General',
         enabled: faq.enabled ?? true,
         priority: faq.priority ?? 1,
-
         keywords: faq.keywords ?? [],
-
         intent: faq.intent ?? 'unknown',
-
         entities: faq.entities ?? [],
-
         embedding: faq.embedding ?? [],
-
         embeddingModel: faq.embeddingModel ?? 'Xenova/all-MiniLM-L6-v2',
-
         usageCount: faq.usageCount ?? 0,
-
         lastMatchedAt: faq.lastMatchedAt,
       })) ?? []
 
@@ -113,9 +106,7 @@ export class KnowledgeBaseService {
       {
         $set: {
           accountId: new mongoose.Types.ObjectId(accountId),
-
           ...data,
-
           faqs: normalizedFaqs,
         },
       },
@@ -142,40 +133,59 @@ export class KnowledgeBaseService {
 
   /**
    * Scans crawled web page matrix elements to locate fallback answer patterns
+   * Corrected to navigate nested ICrawlChunk lists safely.
    */
   static async searchWebContextFallback(
     propertyId: string,
     cleanInput: string,
-  ): Promise<{ matched: boolean; answer: string; confidenceScore: number }> {
-    const kb = await KnowledgeBase.findOne({
-      propertyId: new mongoose.Types.ObjectId(propertyId),
-    }).lean()
-
-    if (!kb || !kb.crawledSources || kb.crawledSources.length === 0) {
+    queryEmbedding?: number[],
+  ) {
+    const kb = await KnowledgeBase.findOne({ propertyId })
+    if (!kb || !kb.crawledSources) {
       return { matched: false, answer: '', confidenceScore: 0 }
     }
 
-    const queryEmbedding = await createEmbedding(cleanInput)
-    let bestChunkText = ''
-    let highestScore = 0
+    let bestMatchText = ''
+    let maxScore = 0
 
+    // 1. Loop through your crawled document domains
     for (const source of kb.crawledSources) {
+      // Corrected Type Overlap Check: Status uses 'scraped' when complete
       if (source.status !== 'scraped' || !source.chunks) continue
 
+      // 2. Loop through nested vector pieces inside this source context
       for (const chunk of source.chunks) {
-        const score = cosineSimilarity(queryEmbedding, chunk.embedding)
-        if (score > highestScore) {
-          highestScore = score
-          bestChunkText = chunk.text
+        let score = 0
+
+        if (
+          queryEmbedding &&
+          Array.isArray(chunk.embedding) &&
+          chunk.embedding.length > 0
+        ) {
+          score = cosineSimilarity(queryEmbedding, chunk.embedding)
+        } else {
+          // Fallback literal keyword text matching query if vectors are missing
+          if (chunk.text.toLowerCase().includes(cleanInput)) {
+            score = 0.6
+          }
+        }
+
+        if (score > maxScore) {
+          maxScore = score
+          bestMatchText = chunk.text
         }
       }
     }
 
-    return {
-      matched: highestScore >= 0.45,
-      answer: bestChunkText,
-      confidenceScore: highestScore,
+    if (maxScore >= 0.45 && bestMatchText) {
+      return {
+        matched: true,
+        answer: bestMatchText,
+        confidenceScore: maxScore,
+      }
     }
+
+    return { matched: false, answer: '', confidenceScore: 0 }
   }
 
   /**

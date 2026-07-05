@@ -447,31 +447,39 @@ export class AIService {
       if (humanWords.some((word) => cleanInput.includes(word))) {
         return createResponse(randomResponse(escalationResponses), 1, true)
       }
+      /* ========================================================================== */
+      /* 🎯 HYBRID KNOWLEDGE RETRIEVAL (FAQ + CRAWLED WEB CONTENT)                  */
+      /* ========================================================================== */
 
-      /* KNOWLEDGE RETRIEVAL & HYBRID FETCH FALLBACK */
+      // Get settings once upfront to establish our threshold configuration boundaries
+      const settings = await KnowledgeBaseService.getKnowledgeBase(
+        '',
+        propertyId,
+      )
+      const threshold = settings?.confidenceThreshold ?? 0.8
+
       let knowledge = await KnowledgeBaseService.searchByIntent(
         propertyId,
         intent,
       )
+      let bestFaqMatch: any = null
 
-      // 🎯 FIX: If no intent matches, fallback to loading the document corpus for full vector scanning
+      // Fallback: If no strict intent matches, fetch all available FAQs to parse semantically
       if ((!knowledge || knowledge.length === 0) && intent === 'unknown') {
-        const fullKb = await KnowledgeBaseService.getKnowledgeBase('', propertyId)
+        const fullKb = await KnowledgeBaseService.getKnowledgeBase(
+          '',
+          propertyId,
+        )
         if (fullKb && fullKb.faqs) {
           knowledge = fullKb.faqs
         }
       }
 
-      // Get configuration limits for threshold checks
-      const settings = await KnowledgeBaseService.getKnowledgeBase('', propertyId)
-      const threshold = settings?.confidenceThreshold ?? 0.8
-
-      let bestFaqMatch: any = null
+      // Generate the query embedding vector once to reuse across both matching pipelines
+      const queryEmbedding: number[] = await createEmbedding(cleanInput)
 
       if (knowledge && knowledge.length > 0) {
         /* RERANKING FAQ MATCHES */
-        const queryEmbedding: number[] = await createEmbedding(cleanInput)
-
         const ranked = await Promise.all(
           knowledge.map(async (item: any) => {
             if (!Array.isArray(item.embedding) || !item.embedding.length) {
@@ -498,7 +506,7 @@ export class AIService {
         ranked.sort((a, b) => b.confidence - a.confidence)
         bestFaqMatch = ranked[0]
 
-        // Check if an FAQ matched above our threshold targets
+        // If an FAQ matches above our threshold configuration, return it immediately
         if (bestFaqMatch && bestFaqMatch.confidence >= threshold) {
           setMemory(sessionId, {
             lastQuestion: message,
@@ -531,11 +539,13 @@ export class AIService {
       }
 
       /* -------------------------------------------------------------------------- */
-      /* 🎯 CRAWLED WEB CONTENT FALLBACK RESOLUTION LAYER                           */
+      /* 🌐 CRAWLED WEB CONTENT SEMANTIC SEARCH FALLBACK                            */
       /* -------------------------------------------------------------------------- */
+      // If FAQs don't match, run our fallback engine using the vector we built
       const webFallback = await KnowledgeBaseService.searchWebContextFallback(
         propertyId,
         cleanInput,
+        queryEmbedding, // 👈 Pass vector along to calculate deep cosine similarity inside chunk documents
       )
 
       if (webFallback.matched && webFallback.confidenceScore >= 0.45) {
@@ -556,7 +566,7 @@ export class AIService {
       return createResponse(
         `${randomResponse(fallbackResponses)}\n\nWould you like me to connect you with one of our support specialists?`,
         bestFaqMatch?.confidence ?? webFallback.confidenceScore ?? 0,
-        true,
+        true, // Hand off to a human agent since both levels missed the threshold
       )
     } catch (error) {
       logger.error(error, 'AI service error')
