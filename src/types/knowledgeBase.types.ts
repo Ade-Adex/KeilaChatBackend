@@ -6,6 +6,20 @@ export type AiMode = 'disabled' | 'knowledge_only' | 'hybrid'
 
 export type FallbackStrategy = 'human' | 'clarify' | 'fallback'
 
+export type ScrapingStatus = 'pending' | 'scraped' | 'failed'
+
+// 🎯 ADDED: Type contract for the web scraped links sub-document
+export interface ICrawledSource {
+  _id?: Types.ObjectId
+  url: string
+  title?: string
+  rawContent: string
+  status: ScrapingStatus
+  lastScrapedAt?: Date
+  createdAt?: Date
+  updatedAt?: Date
+}
+
 export interface IFaqItem {
   question: string
   answer: string
@@ -13,27 +27,18 @@ export interface IFaqItem {
   enabled: boolean
   priority: number
   keywords: string[]
-
   intent?: string
-
   entities?: string[]
-
   embedding?: number[]
-
   embeddingModel?: string
-
   usageCount?: number
-
   lastMatchedAt?: Date
-
   createdAt?: Date
-
   updatedAt?: Date
 }
 
 export interface IKnowledgeBase extends Document {
   accountId: Types.ObjectId
-
   propertyId: Types.ObjectId
   isAiEnabled: boolean
   aiMode: AiMode
@@ -47,7 +52,8 @@ export interface IKnowledgeBase extends Document {
   lastIndexedAt?: Date
   faqs: IFaqItem[]
 
-  createdAt: Date
+  crawledSources: ICrawledSource[]
 
+  createdAt: Date
   updatedAt: Date
 }
