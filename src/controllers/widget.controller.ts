@@ -64,7 +64,23 @@ export const verifyWidget = catchAsync(
           primaryColor: property.widgetSettings?.primaryColor ?? '#2563eb',
         },
 
+        // 🎯 FIX: Forward the explicit widgetSettings object structure downstream
+        widgetSettings: {
+          aiName: property.widgetSettings?.aiName,
+          launcherPosition: property.widgetSettings?.launcherPosition ?? 'right',
+          welcomeMessage: property.widgetSettings?.welcomeMessage ?? 'Hi! How can we help you today?',
+          offlineMessage: property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
+          showAgentPhoto: property.widgetSettings?.showAgentPhoto ?? true,
+          soundEnabled: property.widgetSettings?.soundEnabled ?? true,
+          allowFileUpload: property.widgetSettings?.allowFileUpload ?? true,
+          allowEmoji: property.widgetSettings?.allowEmoji ?? true,
+          allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
+        },
+
         settings: {
+          // 🎯 SAFEGUARD: Keep fallback signature map fields on old nested layout path too
+          aiName: property.widgetSettings?.aiName ?? property.settings?.aiName,
+
           welcomeMessage:
             property.widgetSettings?.welcomeMessage ??
             'Hi! How can we help you today?',
@@ -84,7 +100,6 @@ export const verifyWidget = catchAsync(
     })
   },
 )
-
 /* -------------------------------------------------------------------------- */
 /* Widget Status                                                              */
 /* -------------------------------------------------------------------------- */
