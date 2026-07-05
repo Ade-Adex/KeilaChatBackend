@@ -1,3 +1,5 @@
+// /src/services/knowledgeBase.service.ts
+
 import mongoose from 'mongoose'
 import logger from '../bootstrap/logger.js'
 import { AppError } from './appError.js'
