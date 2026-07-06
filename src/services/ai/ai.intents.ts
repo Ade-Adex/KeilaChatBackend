@@ -134,8 +134,6 @@ export const enterpriseIntents: AIIntent[] = [
     ],
   },
 
- 
-
   {
     patterns: [
       'i love you',
@@ -162,5 +160,26 @@ export const enterpriseIntents: AIIntent[] = [
       'are you my co-worker',
     ],
     responses: ["That's very kind of you. I'm always happy to help."],
+  },
+
+  {
+    patterns: [
+      'okay',
+      'ok',
+      'alright',
+      'all right',
+      'sure',
+      'got it',
+      'noted',
+      'fine',
+      'perfect',
+      'awesome',
+      'sounds good',
+    ],
+    responses: [
+      'Alright! Let me know if there is anything else you need help with.',
+      'Understood. Feel free to ask if anything else comes up!',
+      'Great. I am here whenever you are ready for your next question.',
+    ],
   },
 ]

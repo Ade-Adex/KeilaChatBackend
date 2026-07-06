@@ -1,5 +1,7 @@
 // /src/services/ai.service.ts
 
+// /src/services/ai.service.ts
+
 import ChatSession from '../models/ChatSession.js'
 import logger from '../bootstrap/logger.js'
 import { AppError } from './appError.js'
@@ -18,6 +20,12 @@ import { cosineSimilarity } from './ai/ai.cosine.js'
 import { addHistory, getMemory, setMemory } from './ai/ai.memory.js'
 import KnowledgeBase from '../models/KnowledgeBase.js'
 import { footballIntents } from './ai/ai.football.js'
+
+// ✅ Helper to get a random fallback from the responses array
+const getRandomFallback = (): string => {
+  const index = Math.floor(Math.random() * fallbackResponses.length)
+  return fallbackResponses[index]!
+}
 
 export class AIService {
   static async generateReply(message: string, context: any[]) {
@@ -105,11 +113,10 @@ export class AIService {
       if (humanWords.some((word) => cleanInput.includes(word))) {
         return createResponse(randomResponse(escalationResponses), 1, true)
       }
+
       /* ========================================================================== */
       /* 🎯 HYBRID KNOWLEDGE RETRIEVAL (FAQ + CRAWLED WEB CONTENT)                  */
       /* ========================================================================== */
-
-      // Get settings once upfront to establish our threshold configuration boundaries
       const settings = await KnowledgeBaseService.getKnowledgeBase(
         '',
         propertyId,
@@ -122,7 +129,6 @@ export class AIService {
       )
       let bestFaqMatch: any = null
 
-      // Fallback: If no strict intent matches, fetch all available FAQs to parse semantically
       if ((!knowledge || knowledge.length === 0) && intent === 'unknown') {
         const fullKb = await KnowledgeBaseService.getKnowledgeBase(
           '',
@@ -133,7 +139,6 @@ export class AIService {
         }
       }
 
-      // Generate the query embedding vector once to reuse across both matching pipelines
       const queryEmbedding: number[] = await createEmbedding(cleanInput)
 
       if (knowledge && knowledge.length > 0) {
@@ -164,7 +169,6 @@ export class AIService {
         ranked.sort((a, b) => b.confidence - a.confidence)
         bestFaqMatch = ranked[0]
 
-        // If an FAQ matches above our threshold configuration, return it immediately
         if (bestFaqMatch && bestFaqMatch.confidence >= threshold) {
           setMemory(sessionId, {
             lastQuestion: message,
@@ -196,10 +200,7 @@ export class AIService {
         }
       }
 
-      /* -------------------------------------------------------------------------- */
-      /* 🌐 CRAWLED WEB CONTENT SEMANTIC SEARCH FALLBACK                            */
-      /* -------------------------------------------------------------------------- */
-      // If FAQs don't match, run our fallback engine using the vector we built
+      /* 🌐 CRAWLED WEB CONTENT SEMANTIC SEARCH FALLBACK */
       const webFallback = await KnowledgeBaseService.searchWebContextFallback(
         propertyId,
         cleanInput,
@@ -223,13 +224,16 @@ export class AIService {
       /* HARD FALLBACK & HUMAN HANDOFF TRIAGE */
       const finalConfidence = Math.max(
         bestFaqMatch?.confidence ?? 0,
-        webFallback?.confidenceScore ?? 0
+        webFallback?.confidenceScore ?? 0,
       )
 
+      // ✅ Replaced the static selection with your newly integrated unique function call
+      const activeFallbackPhrase = getRandomFallback()
+
       return createResponse(
-        `${randomResponse(fallbackResponses)}\n\nWould you like me to connect you with one of our support specialists?`,
+        `${activeFallbackPhrase}\n\nWould you like me to connect you with one of our support specialists?`,
         finalConfidence,
-        true, // Hand off to a human agent since both levels missed the threshold
+        true,
       )
     } catch (error) {
       logger.error(error, 'AI service error')
