@@ -133,7 +133,7 @@ export class KnowledgeBaseService {
 
   /**
    * Scans crawled web page matrix elements to locate fallback answer patterns
-   * Corrected to navigate nested ICrawlChunk lists safely.
+   * Robust multi-tenant evaluation utilizing both vector similarity and text fallback matrices.
    */
   static async searchWebContextFallback(
     propertyId: string,
@@ -148,12 +148,10 @@ export class KnowledgeBaseService {
     let bestMatchText = ''
     let maxScore = 0
 
-    // 1. Loop through your crawled document domains
+    // Loop through your crawled document domains
     for (const source of kb.crawledSources) {
-      // Corrected Type Overlap Check: Status uses 'scraped' when complete
       if (source.status !== 'scraped' || !source.chunks) continue
 
-      // 2. Loop through nested vector pieces inside this source context
       for (const chunk of source.chunks) {
         let score = 0
 
@@ -162,11 +160,21 @@ export class KnowledgeBaseService {
           Array.isArray(chunk.embedding) &&
           chunk.embedding.length > 0
         ) {
-          score = cosineSimilarity(queryEmbedding, chunk.embedding)
+          const similarity = cosineSimilarity(queryEmbedding, chunk.embedding)
+
+          // Boost score slightly if there's a strong direct text keyword overlap
+          const lowerChunkText = chunk.text.toLowerCase()
+          const words = cleanInput.split(/\s+/)
+          const matchCount = words.filter(
+            (word) => word.length > 3 && lowerChunkText.includes(word),
+          ).length
+          const keywordBonus = matchCount * 0.05
+
+          score = Math.min(similarity + keywordBonus, 1)
         } else {
           // Fallback literal keyword text matching query if vectors are missing
           if (chunk.text.toLowerCase().includes(cleanInput)) {
-            score = 0.6
+            score = 0.65
           }
         }
 
@@ -177,7 +185,8 @@ export class KnowledgeBaseService {
       }
     }
 
-    if (maxScore >= 0.45 && bestMatchText) {
+    // Dynamic scale limit for chunk responses
+    if (maxScore >= 0.4 && bestMatchText) {
       return {
         matched: true,
         answer: bestMatchText,
@@ -208,40 +217,60 @@ export class KnowledgeBaseService {
       }
     }
 
+    const cleanInput = message.toLowerCase().trim()
     const queryEmbedding = await createEmbedding(message)
+
     let bestMatchText = ''
-    let highestSimilarity = 0
-    const thresholdScale = (kb.confidenceThreshold ?? 0.8) * 100
+    let maxScore = 0
 
     if (kb.crawledSources && Array.isArray(kb.crawledSources)) {
       for (const source of kb.crawledSources) {
         if (source.status !== 'scraped' || !source.chunks) continue
 
         for (const chunk of source.chunks) {
-          const similarity = cosineSimilarity(queryEmbedding, chunk.embedding)
-          const similarityPercentage = Math.round(similarity * 100)
+          let score = 0
+          if (Array.isArray(chunk.embedding) && chunk.embedding.length > 0) {
+            const similarity = cosineSimilarity(queryEmbedding, chunk.embedding)
 
-          if (similarityPercentage > highestSimilarity) {
-            highestSimilarity = similarityPercentage
+            // Apply keyword boost logic consistently
+            const lowerChunkText = chunk.text.toLowerCase()
+            const words = cleanInput.split(/\s+/)
+            const matchCount = words.filter(
+              (word) => word.length > 3 && lowerChunkText.includes(word),
+            ).length
+            const keywordBonus = matchCount * 0.05
+
+            score = Math.min(similarity + keywordBonus, 1)
+          } else {
+            if (chunk.text.toLowerCase().includes(cleanInput)) score = 0.6
+          }
+
+          if (score > maxScore) {
+            maxScore = score
             bestMatchText = chunk.text
           }
         }
       }
     }
 
-    if (highestSimilarity >= thresholdScale && bestMatchText) {
+    // Base context match threshold for page scraping vectors is more forgiving than static FAQs
+    const minimumSandboxThreshold = Math.max(
+      (kb.confidenceThreshold ?? 0.8) - 0.3,
+      0.4,
+    )
+
+    if (maxScore >= minimumSandboxThreshold && bestMatchText) {
       return {
         matched: true,
         answer: bestMatchText,
-        confidenceScore: highestSimilarity / 100,
+        confidenceScore: maxScore,
       }
     }
 
     return {
       matched: false,
-      answer:
-        'Match failed. Confidence index fell beneath threshold bounds. Route drop triggered to human queue logs.',
-      confidenceScore: highestSimilarity / 100,
+      answer: `Match failed. Top vector candidate score (${Math.round(maxScore * 100)}%) fell beneath context threshold boundaries (${Math.round(minimumSandboxThreshold * 100)}%). Route drop triggered to human queue logs.`,
+      confidenceScore: maxScore,
     }
   }
 

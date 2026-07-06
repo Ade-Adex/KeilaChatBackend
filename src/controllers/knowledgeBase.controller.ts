@@ -14,21 +14,30 @@ import { scrapeWebpage } from '../services/scraper.service.js' // 🎯 Import yo
 /* -------------------------------------------------------------------------- */
 export const getSettings = catchAsync(
   async (req: AuthRequest, res: Response) => {
-    const accountId = req.user?.accountId || (req.headers['x-account-id'] as string)
+    const accountId =
+      req.user?.accountId || (req.headers['x-account-id'] as string)
     let propertyId = req.headers['x-property-id'] as string
 
     if (!propertyId && accountId) {
-      const defaultProperty = await Property.findOne({ accountId }).sort({ createdAt: 1 }).lean()
+      const defaultProperty = await Property.findOne({ accountId })
+        .sort({ createdAt: 1 })
+        .lean()
       if (defaultProperty) {
         propertyId = defaultProperty._id.toString()
       }
     }
 
     if (!propertyId) {
-      throw new AppError('Could not locate an active target property workspace context for this account.', 400)
+      throw new AppError(
+        'Could not locate an active target property workspace context for this account.',
+        400,
+      )
     }
 
-    const knowledgeBase = await KnowledgeBaseService.getKnowledgeBase(accountId, propertyId)
+    const knowledgeBase = await KnowledgeBaseService.getKnowledgeBase(
+      accountId,
+      propertyId,
+    )
 
     res.status(200).json({
       success: true,
@@ -42,18 +51,24 @@ export const getSettings = catchAsync(
 /* -------------------------------------------------------------------------- */
 export const updateSettings = catchAsync(
   async (req: AuthRequest, res: Response) => {
-    const accountId = req.user?.accountId || (req.headers['x-account-id'] as string)
+    const accountId =
+      req.user?.accountId || (req.headers['x-account-id'] as string)
     let propertyId = req.headers['x-property-id'] as string
 
     if (!propertyId && accountId) {
-      const defaultProperty = await Property.findOne({ accountId }).sort({ createdAt: 1 }).lean()
+      const defaultProperty = await Property.findOne({ accountId })
+        .sort({ createdAt: 1 })
+        .lean()
       if (defaultProperty) {
         propertyId = defaultProperty._id.toString()
       }
     }
 
     if (!propertyId) {
-      throw new AppError('Could not locate an active target property workspace context for this account.', 400)
+      throw new AppError(
+        'Could not locate an active target property workspace context for this account.',
+        400,
+      )
     }
 
     const {
@@ -99,22 +114,32 @@ export const updateSettings = catchAsync(
 /* -------------------------------------------------------------------------- */
 export const testPlayground = catchAsync(
   async (req: AuthRequest, res: Response) => {
-    const accountId = req.user?.accountId || (req.headers['x-account-id'] as string)
+    const accountId =
+      req.user?.accountId || (req.headers['x-account-id'] as string)
     let propertyId = req.headers['x-property-id'] as string
     const { message } = req.body
 
     if (!message?.trim()) {
-      throw new AppError('A valid search query message parameter is required.', 400)
+      throw new AppError(
+        'A valid search query message parameter is required.',
+        400,
+      )
     }
 
     if (!propertyId && accountId) {
-      const defaultProperty = await Property.findOne({ accountId }).sort({ createdAt: 1 }).lean()
+      const defaultProperty = await Property.findOne({ accountId })
+        .sort({ createdAt: 1 })
+        .lean()
       if (defaultProperty) {
         propertyId = defaultProperty._id.toString()
       }
     }
 
-    const result = await KnowledgeBaseService.testSandboxQuery(accountId, propertyId, message)
+    const result = await KnowledgeBaseService.testSandboxQuery(
+      accountId,
+      propertyId,
+      message,
+    )
     return res.status(200).json(result)
   },
 )
@@ -218,16 +243,33 @@ export const crawlPropertyUrls = catchAsync(
 
           if (result.success && result.rawContent) {
             try {
-              // Split text cleanly by sentence double-breaks or periods
-              const paragraphs = result.rawContent
-                .split(/\n\s*\n|\.\s+/)
+              // 1. Split raw text blocks by lines or larger structures safely
+              const rawParagraphs = result.rawContent
+                .split(/\n+/)
                 .map((p) => p.trim())
-                .filter((p) => p.length > 20)
+                .filter((p) => p.length > 10)
+
+              const chunksToSave: string[] = []
+              let currentWindow = ''
+
+              // 2. Windowing Strategy: Combine small fragments into robust contextual 60-word blocks
+              for (const paragraph of rawParagraphs) {
+                if (
+                  (currentWindow + ' ' + paragraph).split(/\s+/).length < 60
+                ) {
+                  currentWindow = (currentWindow + ' ' + paragraph).trim()
+                } else {
+                  if (currentWindow.length > 0) chunksToSave.push(currentWindow)
+                  currentWindow = paragraph
+                }
+              }
+              if (currentWindow.length > 0) chunksToSave.push(currentWindow)
 
               const { createEmbedding } =
                 await import('../services/ai/ai.embeddings.js')
 
-              for (const textChunk of paragraphs) {
+              // 3. Process embeddings for the consolidated windows
+              for (const textChunk of chunksToSave) {
                 const vector = await createEmbedding(textChunk)
                 sourceToUpdate.chunks.push({
                   text: textChunk,
@@ -253,4 +295,3 @@ export const crawlPropertyUrls = catchAsync(
     }
   },
 )
-
