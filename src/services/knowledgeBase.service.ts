@@ -132,8 +132,8 @@ export class KnowledgeBaseService {
   }
 
   /**
-   * Scans crawled web page matrix elements to locate fallback answer patterns
-   * Robust multi-tenant evaluation utilizing both vector similarity and text fallback matrices.
+   * Scans crawled web page matrix elements to locate fallback answer patterns.
+   * Enhanced with a Heavy Keyword Boosting Matrix for short/single-word queries.
    */
   static async searchWebContextFallback(
     propertyId: string,
@@ -147,36 +147,46 @@ export class KnowledgeBaseService {
 
     let bestMatchText = ''
     let maxScore = 0
+    const lowerInput = cleanInput.toLowerCase().trim()
 
-    // Loop through your crawled document domains
     for (const source of kb.crawledSources) {
       if (source.status !== 'scraped' || !source.chunks) continue
 
       for (const chunk of source.chunks) {
         let score = 0
+        const lowerChunkText = chunk.text.toLowerCase()
 
+        // 1. Calculate base Vector Score if embedding exists
         if (
           queryEmbedding &&
           Array.isArray(chunk.embedding) &&
           chunk.embedding.length > 0
         ) {
-          const similarity = cosineSimilarity(queryEmbedding, chunk.embedding)
+          score = cosineSimilarity(queryEmbedding, chunk.embedding)
+        }
 
-          // Boost score slightly if there's a strong direct text keyword overlap
-          const lowerChunkText = chunk.text.toLowerCase()
-          const words = cleanInput.split(/\s+/)
-          const matchCount = words.filter(
-            (word) => word.length > 3 && lowerChunkText.includes(word),
-          ).length
-          const keywordBonus = matchCount * 0.05
-
-          score = Math.min(similarity + keywordBonus, 1)
-        } else {
-          // Fallback literal keyword text matching query if vectors are missing
-          if (chunk.text.toLowerCase().includes(cleanInput)) {
-            score = 0.65
+        // 2. Apply Direct Keyword Boosting Matrix
+        if (lowerChunkText.includes(lowerInput)) {
+          // If it's a short/single word query (like "features"), give it a major priority jump
+          const exactWordRegex = new RegExp(`\\b${lowerInput}\\b`, 'i')
+          if (exactWordRegex.test(lowerChunkText)) {
+            score = Math.max(score, 0.72) + 0.15 // Force-push it past the fallback floor
+          } else {
+            score = Math.max(score, 0.55) + 0.1
           }
         }
+
+        // 3. Multi-word token match bonus
+        const inputWords = lowerInput.split(/\s+/).filter((w) => w.length > 3)
+        if (inputWords.length > 1) {
+          const matchCount = inputWords.filter((word) =>
+            lowerChunkText.includes(word),
+          ).length
+          score += (matchCount / inputWords.length) * 0.15
+        }
+
+        // Cap the maximum possible structural score at 1.00
+        score = Math.min(score, 1)
 
         if (score > maxScore) {
           maxScore = score
@@ -185,8 +195,7 @@ export class KnowledgeBaseService {
       }
     }
 
-    // Dynamic scale limit for chunk responses
-    if (maxScore >= 0.4 && bestMatchText) {
+    if (maxScore >= 0.45 && bestMatchText) {
       return {
         matched: true,
         answer: bestMatchText,
@@ -229,21 +238,23 @@ export class KnowledgeBaseService {
 
         for (const chunk of source.chunks) {
           let score = 0
+          const lowerChunkText = chunk.text.toLowerCase()
+
           if (Array.isArray(chunk.embedding) && chunk.embedding.length > 0) {
-            const similarity = cosineSimilarity(queryEmbedding, chunk.embedding)
-
-            // Apply keyword boost logic consistently
-            const lowerChunkText = chunk.text.toLowerCase()
-            const words = cleanInput.split(/\s+/)
-            const matchCount = words.filter(
-              (word) => word.length > 3 && lowerChunkText.includes(word),
-            ).length
-            const keywordBonus = matchCount * 0.05
-
-            score = Math.min(similarity + keywordBonus, 1)
-          } else {
-            if (chunk.text.toLowerCase().includes(cleanInput)) score = 0.6
+            score = cosineSimilarity(queryEmbedding, chunk.embedding)
           }
+
+          // Exact matching rules alignment for Sandbox Sync
+          if (lowerChunkText.includes(cleanInput)) {
+            const exactWordRegex = new RegExp(`\\b${cleanInput}\\b`, 'i')
+            if (exactWordRegex.test(lowerChunkText)) {
+              score = Math.max(score, 0.75) + 0.15
+            } else {
+              score = Math.max(score, 0.6) + 0.1
+            }
+          }
+
+          score = Math.min(score, 1)
 
           if (score > maxScore) {
             maxScore = score
@@ -253,10 +264,10 @@ export class KnowledgeBaseService {
       }
     }
 
-    // Base context match threshold for page scraping vectors is more forgiving than static FAQs
+    // Give crawled text chunks a lower, more realistic boundary ceiling than strict FAQ configurations
     const minimumSandboxThreshold = Math.max(
-      (kb.confidenceThreshold ?? 0.8) - 0.3,
-      0.4,
+      (kb.confidenceThreshold ?? 0.8) - 0.25,
+      0.45,
     )
 
     if (maxScore >= minimumSandboxThreshold && bestMatchText) {
@@ -269,7 +280,7 @@ export class KnowledgeBaseService {
 
     return {
       matched: false,
-      answer: `Match failed. Top vector candidate score (${Math.round(maxScore * 100)}%) fell beneath context threshold boundaries (${Math.round(minimumSandboxThreshold * 100)}%). Route drop triggered to human queue logs.`,
+      answer: `Match failed. Top candidate score (${Math.round(maxScore * 100)}%) fell beneath context threshold bounds (${Math.round(minimumSandboxThreshold * 100)}%). Route drop triggered to human queue logs.`,
       confidenceScore: maxScore,
     }
   }
