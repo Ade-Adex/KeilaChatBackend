@@ -6,12 +6,9 @@ import { KnowledgeBaseService } from '../services/knowledgeBase.service.js'
 import type { AuthRequest } from '../middleware/auth.middleware.js'
 import { AppError } from '../services/appError.js'
 import Property from '../models/Property.js'
-import KnowledgeBase from '../models/KnowledgeBase.js' // 🎯 Import your KnowledgeBase model
-import { scrapeWebpage } from '../services/scraper.service.js' // 🎯 Import your scraper engine
+import KnowledgeBase from '../models/KnowledgeBase.js'
+import { scrapeWebpage } from '../services/scraper.service.js'
 
-/* -------------------------------------------------------------------------- */
-/* GET KNOWLEDGE BASE SETTINGS                                               */
-/* -------------------------------------------------------------------------- */
 export const getSettings = catchAsync(
   async (req: AuthRequest, res: Response) => {
     const accountId =
@@ -29,7 +26,7 @@ export const getSettings = catchAsync(
 
     if (!propertyId) {
       throw new AppError(
-        'Could not locate an active target property workspace context for this account.',
+        'Could not locate an active target property workspace context.',
         400,
       )
     }
@@ -38,17 +35,10 @@ export const getSettings = catchAsync(
       accountId,
       propertyId,
     )
-
-    res.status(200).json({
-      success: true,
-      data: knowledgeBase,
-    })
+    res.status(200).json({ success: true, data: knowledgeBase })
   },
 )
 
-/* -------------------------------------------------------------------------- */
-/* UPDATE KNOWLEDGE BASE SETTINGS                                            */
-/* -------------------------------------------------------------------------- */
 export const updateSettings = catchAsync(
   async (req: AuthRequest, res: Response) => {
     const accountId =
@@ -66,39 +56,15 @@ export const updateSettings = catchAsync(
 
     if (!propertyId) {
       throw new AppError(
-        'Could not locate an active target property workspace context for this account.',
+        'Could not locate an active target property workspace context.',
         400,
       )
     }
 
-    const {
-      isAiEnabled,
-      aiMode,
-      confidenceThreshold,
-      fallbackStrategy,
-      humanHandoffEnabled,
-      fallbackMessage,
-      welcomeMessage,
-      maxResults,
-      categories,
-      faqs,
-    } = req.body
-
     const knowledgeBase = await KnowledgeBaseService.updateKnowledgeBase(
       accountId,
       propertyId,
-      {
-        isAiEnabled,
-        aiMode,
-        confidenceThreshold,
-        fallbackStrategy,
-        humanHandoffEnabled,
-        fallbackMessage,
-        welcomeMessage,
-        maxResults,
-        categories,
-        faqs,
-      },
+      req.body,
     )
 
     res.status(200).json({
@@ -109,9 +75,6 @@ export const updateSettings = catchAsync(
   },
 )
 
-/* -------------------------------------------------------------------------- */
-/* SEMANTIC PLAYGROUND SIMULATION SEARCH ROUTE                                */
-/* -------------------------------------------------------------------------- */
 export const testPlayground = catchAsync(
   async (req: AuthRequest, res: Response) => {
     const accountId =
@@ -140,13 +103,10 @@ export const testPlayground = catchAsync(
       propertyId,
       message,
     )
-    return res.status(200).json(result)
+    res.status(200).json(result)
   },
 )
 
-/* -------------------------------------------------------------------------- */
-/* CRAWL PROPERTY URLS ROUTE                                                 */
-/* -------------------------------------------------------------------------- */
 export const crawlPropertyUrls = catchAsync(
   async (req: AuthRequest, res: Response) => {
     const accountId =
@@ -154,7 +114,6 @@ export const crawlPropertyUrls = catchAsync(
     let propertyId = req.headers['x-property-id'] as string
     const { urls } = req.body
 
-    // 1. Resolve workspace context cleanly with your Smart Auto-Lookup
     if (!propertyId && accountId) {
       const defaultProperty = await Property.findOne({ accountId })
         .sort({ createdAt: 1 })
@@ -166,7 +125,7 @@ export const crawlPropertyUrls = catchAsync(
 
     if (!propertyId) {
       throw new AppError(
-        'Could not locate an active target property workspace context for this account.',
+        'Could not locate an active target property workspace context.',
         400,
       )
     }
@@ -178,7 +137,6 @@ export const crawlPropertyUrls = catchAsync(
       )
     }
 
-    // 2. Locate the existing Knowledge Base document context for this property
     let kb = await KnowledgeBase.findOne({ propertyId })
     if (!kb) {
       throw new AppError(
@@ -187,13 +145,11 @@ export const crawlPropertyUrls = catchAsync(
       )
     }
 
-    // 3. Immediately respond with a 202 Accepted so the client frame isn't left hanging
     res.status(202).json({
       success: true,
       message: 'Web page crawling process started successfully.',
     })
 
-    // 4. Background Processing Execution Loop
     for (const urlString of urls) {
       const targetUrl = urlString.trim()
       if (!targetUrl) continue
@@ -223,10 +179,7 @@ export const crawlPropertyUrls = catchAsync(
 
       await kb.save()
 
-      // 5. Execute Scraper Worker Logic
       const result = await scrapeWebpage(targetUrl)
-
-      // Reload fresh document instance to account for mid-flight parallel mutations
       kb = (await KnowledgeBase.findOne({ propertyId })) || kb
       const updateIndex = kb.crawledSources.findIndex(
         (s) => s.url === targetUrl,
@@ -243,7 +196,6 @@ export const crawlPropertyUrls = catchAsync(
 
           if (result.success && result.rawContent) {
             try {
-              // 1. Split raw text blocks by lines or larger structures safely
               const rawParagraphs = result.rawContent
                 .split(/\n+/)
                 .map((p) => p.trim())
@@ -252,7 +204,6 @@ export const crawlPropertyUrls = catchAsync(
               const chunksToSave: string[] = []
               let currentWindow = ''
 
-              // 2. Windowing Strategy: Combine small fragments into robust contextual 60-word blocks
               for (const paragraph of rawParagraphs) {
                 if (
                   (currentWindow + ' ' + paragraph).split(/\s+/).length < 60
@@ -268,7 +219,6 @@ export const crawlPropertyUrls = catchAsync(
               const { createEmbedding } =
                 await import('../services/ai/ai.embeddings.js')
 
-              // 3. Process embeddings for the consolidated windows
               for (const textChunk of chunksToSave) {
                 const vector = await createEmbedding(textChunk)
                 sourceToUpdate.chunks.push({
@@ -293,5 +243,39 @@ export const crawlPropertyUrls = catchAsync(
         }
       }
     }
+  },
+)
+
+export const deleteCrawledSource = catchAsync(
+  async (req: AuthRequest, res: Response) => {
+    const propertyId = req.headers['x-property-id'] as string
+    const { url } = req.body
+
+    if (!propertyId || !url) {
+      throw new AppError(
+        'Missing required property validation identifier parameters.',
+        400,
+      )
+    }
+
+    const kb = await KnowledgeBase.findOneAndUpdate(
+      { propertyId },
+      { $pull: { crawledSources: { url } } },
+      { new: true },
+    )
+
+    if (!kb) {
+      throw new AppError(
+        'Failed to locate target document profile context matrix.',
+        404,
+      )
+    }
+
+    res.status(200).json({
+      success: true,
+      message:
+        'Source document successfully un-indexed from workspace database.',
+      data: kb,
+    })
   },
 )

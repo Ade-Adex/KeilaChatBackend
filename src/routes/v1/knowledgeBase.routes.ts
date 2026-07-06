@@ -6,6 +6,7 @@ import {
   updateSettings,
   testPlayground,
   crawlPropertyUrls,
+  deleteCrawledSource,
 } from '../../controllers/knowledgeBase.controller.js'
 import { authMiddleware } from '../../middleware/auth.middleware.js'
 import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
@@ -36,5 +37,6 @@ router.post('/test', rbac('admin'), testPlayground)
 
 // (Resolves target workspace context matching your smart auto-lookup controller patterns)
 router.post('/crawl', crawlPropertyUrls)
+router.delete('/sources/delete', rbac('admin'), deleteCrawledSource)
 
 export default router
