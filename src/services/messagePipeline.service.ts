@@ -20,7 +20,7 @@ export interface ProcessMessagePayload {
   senderType: 'visitor' | 'operator' | 'ai' | 'system'
   senderId: string
   messageText: string
-  messageType?: 'text' | 'image' | 'video' | 'audio' | 'file'
+  messageType?: 'text' | 'image' | 'video' | 'audio' | 'file' | 'media'
   isFromAI?: boolean
   media?: string[]
 }
@@ -44,20 +44,49 @@ export class MessagePipeline {
     }
 
     /* ****************************************
-     * STEP 1: Save message to Database
+     * STEP 1: Process Media & Save message to Database
      **************************************** */
-    // const options: { messageType?: MessageType; isFromAI?: boolean } = {}
-    // if (messageType) options.messageType = messageType
-    // if (isFromAI !== undefined) options.isFromAI = isFromAI
-
     const options: {
       messageType?: MessageType
       isFromAI?: boolean
       media?: string[]
+      attachments?: Array<{
+        fileUrl: string
+        fileName: string
+        fileType: string
+      }>
     } = {}
-    if (messageType) options.messageType = messageType
+
+    // Determine context-aware type defaults
+    if (messageType) {
+      options.messageType = messageType as MessageType
+    } else if (media && media.length > 0) {
+      options.messageType = 'media' as any
+    }
+
     if (isFromAI !== undefined) options.isFromAI = isFromAI
     if (media) options.media = media
+
+    // 🎯 TRANSFORM RAW STRING URLS INTO FULLY TYPED STRUCTURED ATTACHMENTS
+    if (media && media.length > 0) {
+      options.attachments = media.map((url) => {
+        let fileType = 'application/octet-stream'
+
+        if (url.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
+          fileType = 'image/jpeg'
+        } else if (url.match(/\.(webm|ogg|mp4|mp3|wav|aac|m4a)/i)) {
+          fileType = 'audio/webm'
+        } else if (url.match(/\.(mov|mkv|wmv)/i)) {
+          fileType = 'video/mp4'
+        }
+
+        return {
+          fileUrl: url,
+          fileName: url.substring(url.lastIndexOf('/') + 1) || 'attachment',
+          fileType: fileType,
+        }
+      })
+    }
 
     const message = await sendMessage(
       sessionId,
@@ -72,7 +101,7 @@ export class MessagePipeline {
       : { ...message }
 
     /* ****************************************
-     * STEP 2: STAMP SENDER META DATA
+     * STEP 2: STAMP SENDER METADATA
      **************************************** */
     if (senderType === 'operator' && senderId) {
       const activeOperator = await Operator.findById(senderId)
@@ -98,14 +127,14 @@ export class MessagePipeline {
      **************************************** */
     if (senderType === 'visitor') {
       if (session.aiEnabled && !session.assignedOperatorId) {
-        const cleanText = messageText.toLowerCase().trim()
+        const cleanText = (messageText || '').toLowerCase().trim()
         const isConfirmingTransfer =
           cleanText === 'yes' ||
           cleanText.includes('transfer') ||
           cleanText.includes('agent') ||
           cleanText.includes('human')
 
-        /* --- SUB-ROUTE A: VISITOR IS CONFIRMING A HUMAN TRANSFER REQUEST --- */
+        /* --- SUB-ROUTE A: HUMAN TRANSFER REQUEST --- */
         if (session.status === 'waiting' && isConfirmingTransfer) {
           const propertyDoc = await Property.findById(session.propertyId)
             .select('accountId')
@@ -175,7 +204,6 @@ export class MessagePipeline {
                 avatar: targetOperator.avatar,
               },
             })
-
             EventService.emitToProperty(
               propertyId,
               'dashboard_refresh_request',
@@ -184,13 +212,13 @@ export class MessagePipeline {
             return messagePayload
           } else {
             const fallbackReply =
-              'I am ready to transfer you, but all of our support representatives are currently offline or handling other inquiries. Please hold, or leave your message here and an agent will follow up with you as soon as possible.'
+              'I am ready to transfer you, but all of our agents are offline. Please hold, and an agent will reply as soon as possible.'
             const aiFallbackMsg = await sendMessage(
               sessionId,
               'ai',
               'ai_agent',
               fallbackReply,
-              { messageType: 'text', isFromAI: true },
+              { messageType: 'text' as any, isFromAI: true },
             )
             EventService.emitToSession(
               sessionId,
@@ -201,27 +229,25 @@ export class MessagePipeline {
           }
         }
 
-        /* --- SUB-ROUTE B: STANDARD INCOMING AI KNOWLEDGE ENGINE QUERY Evaluation --- */
-        // Retrieve message history context records to satisfy parameter typing contracts
+        /* --- SUB-ROUTE B: STANDARD INCOMING AI EVALUATION --- */
         const historyMessages = await Message.find({ sessionId })
           .sort({ createdAt: -1 })
           .limit(10)
           .lean()
 
-        // Dispatch query generation down to our newly integrated AI engine
+        // Give the text (or context indication of file) to AI evaluation
         const aiResponse = await AIService.generateReply(
-          messageText,
+          messageText || '[Media Attachment File]',
           historyMessages,
         )
 
-        // Save AI execution text directly into the database timeline channel
         const aiMessage = await sendMessage(
           sessionId,
           'ai',
           'ai_agent',
           aiResponse.reply,
           {
-            messageType: 'text',
+            messageType: 'text' as any,
             isFromAI: true,
           },
         )
@@ -235,9 +261,8 @@ export class MessagePipeline {
           message: aiPayload,
         })
 
-        // Check if the AI determined it needs to hand off to a human queue structure
         if (aiResponse.shouldEscalate) {
-          session.status = 'waiting' // Mark session waiting for human response approval
+          session.status = 'waiting'
           await session.save()
 
           EventService.emitToProperty(
@@ -250,14 +275,11 @@ export class MessagePipeline {
     }
 
     /* ****************************************
-     * STEP 5: Live Human Operator Auto-assignment (Standard Fallback Check)
+     * STEP 5: Live Auto-assignment Fallback Checks
      **************************************** */
     session = await ChatSession.findById(sessionId)
     if (!session) {
-      throw new AppError(
-        'Chat session context vanished during processing pipeline execution.',
-        404,
-      )
+      throw new AppError('Chat session context vanished.', 404)
     }
 
     if (!session.assignedOperatorId && !session.aiEnabled) {
