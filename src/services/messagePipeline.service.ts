@@ -22,6 +22,7 @@ export interface ProcessMessagePayload {
   messageText: string
   messageType?: 'text' | 'image' | 'video' | 'audio' | 'file'
   isFromAI?: boolean
+  media?: string[]
 }
 
 export class MessagePipeline {
@@ -34,6 +35,7 @@ export class MessagePipeline {
       messageText,
       messageType,
       isFromAI,
+      media,
     } = payload
 
     let session = await ChatSession.findById(sessionId)
@@ -44,9 +46,18 @@ export class MessagePipeline {
     /* ****************************************
      * STEP 1: Save message to Database
      **************************************** */
-    const options: { messageType?: MessageType; isFromAI?: boolean } = {}
+    // const options: { messageType?: MessageType; isFromAI?: boolean } = {}
+    // if (messageType) options.messageType = messageType
+    // if (isFromAI !== undefined) options.isFromAI = isFromAI
+
+    const options: {
+      messageType?: MessageType
+      isFromAI?: boolean
+      media?: string[]
+    } = {}
     if (messageType) options.messageType = messageType
     if (isFromAI !== undefined) options.isFromAI = isFromAI
+    if (media) options.media = media
 
     const message = await sendMessage(
       sessionId,

@@ -20,7 +20,7 @@ const MessageSchema = new Schema<IMessage>(
 
     senderId: { type: String, required: true },
 
-    messageText: { type: String, required: true },
+    messageText: { type: String, default: '' },
 
     messageType: {
       type: String,
@@ -59,6 +59,8 @@ const MessageSchema = new Schema<IMessage>(
         fileName: String,
       },
     ],
+
+    media: { type: [String], default: [] },
 
     readBy: [
       {

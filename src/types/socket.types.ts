@@ -31,6 +31,8 @@ export interface SendMessagePayload {
   messageType?: 'text' | 'image' | 'video' | 'audio' | 'file'
 
   isFromAI?: boolean
+
+  media?: string[]
 }
 
 export interface JoinDashboardPayload {

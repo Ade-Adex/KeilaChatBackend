@@ -37,12 +37,13 @@ export interface IMessage extends BaseEntity {
   sessionId: Types.ObjectId
   senderType: SenderType
   senderId: string
-  messageText: string
+  messageText?: string
   messageType: MessageType
   status: MessageStatus
   isFromAI: boolean
   aiMetadata?: AIMessageMetadata
   attachments: MessageAttachment[]
+  media?: string[]
   replyTo?: Types.ObjectId
   reactions: MessageReaction[]
   deliveredAt?: Date
@@ -60,6 +61,6 @@ export interface IMessage extends BaseEntity {
    * 🎯 REAL-TIME PIPELINE PACKET INTERFACES
    ****************************************
    */
-  senderName?: string 
-  senderAvatar?: string 
+  senderName?: string
+  senderAvatar?: string
 }

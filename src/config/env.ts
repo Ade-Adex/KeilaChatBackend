@@ -1,4 +1,5 @@
 // /src/config/env.ts
+
 import dotenv from 'dotenv'
 import type { SignOptions } from 'jsonwebtoken'
 
@@ -13,7 +14,6 @@ const getRequiredEnv = (key: string): string => {
   }
   return value
 }
-
 
 export const ENV = {
   PORT: process.env.PORT || '5000',
@@ -31,6 +31,13 @@ export const ENV = {
     API_KEY: process.env.RESEND_API_KEY,
     MAIL_USER:
       process.env.RESEND_MAIL_USER || 'no-reply@mail.christbcogbomoso.org',
+  },
+
+  // 🎯 ADD THIS CLOUDINARY CONFIG BLOCK
+  CLOUDINARY: {
+    CLOUD_NAME: getRequiredEnv('CLOUDINARY_CLOUD_NAME'),
+    API_KEY: getRequiredEnv('CLOUDINARY_API_KEY'),
+    API_SECRET: getRequiredEnv('CLOUDINARY_API_SECRET'),
   },
 
   BASE_URL: process.env.BASE_URL,

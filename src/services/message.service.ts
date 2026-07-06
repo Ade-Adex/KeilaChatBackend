@@ -16,12 +16,34 @@
     options?: {
       messageType?: MessageType
       isFromAI?: boolean
+      media?: string[]
     },
   ) {
     const session = await ChatSession.findById(sessionId)
 
     if (!session) {
       throw new AppError('Chat session not found', 404)
+    }
+
+    // 🎯 Determine messageType context automatically based on payload properties
+    let calculatedType = options?.messageType ?? 'text'
+    if (
+      options?.media &&
+      options.media.length > 0 &&
+      calculatedType === 'text'
+    ) {
+      const fallbackUrl = options.media[0] || ''
+      const ext = fallbackUrl.split('.').pop()?.toLowerCase() || ''
+      if (
+        ['mp3', 'wav', 'ogg', 'aac', 'webm'].includes(ext) ||
+        fallbackUrl.includes('voice-note')
+      ) {
+        calculatedType = 'audio'
+      } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+        calculatedType = 'image'
+      } else {
+        calculatedType = 'file'
+      }
     }
 
     const message = await Message.create({
@@ -31,13 +53,17 @@
 
       senderId,
 
-      messageText,
+      // messageText,
+      messageText: messageText || '',
 
-      messageType: options?.messageType ?? 'text',
+      // messageType: options?.messageType ?? 'text',
+      messageType: calculatedType,
 
       status: 'sent',
 
       isFromAI: options?.isFromAI ?? false,
+
+      media: options?.media ?? [],
     })
 
     // Update analytics
@@ -73,7 +99,8 @@
     }
 
     // Update session preview
-    session.lastMessage = messageText
+    session.lastMessage =
+      messageText || `📁 Sent an attachment (${calculatedType})`
     session.lastMessageAt = new Date()
 
     await session.save()

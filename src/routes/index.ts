@@ -15,6 +15,7 @@ import accountRouter from './v1/account.routes.js'
 import dashboardRouter from './v1/dashboard.routes.js'
 import visitorRouter from './v1/visitor.routes.js'
 import knowledgeBaseRouter from './v1/knowledgeBase.routes.js'
+import mediaRouter from './v1/media.routes.js'
 
 const router = Router()
 
@@ -29,6 +30,7 @@ router.use('/properties', propertyRouter)
 router.use('/operators', operatorRouter)
 router.use('/chat', chatRoutes)
 router.use('/messages', messageRouter)
+router.use('/media', mediaRouter)
 router.use('/notifications', notificationRouter)
 router.use('/dashboard', dashboardRouter)
 router.use('/ai', aiRouter)

@@ -34,6 +34,7 @@ export const createMessage = catchAsync(
       messageText,
       messageType,
       isFromAI,
+      media,
     } = req.body
 
     if (!sessionId) {
@@ -65,6 +66,7 @@ export const createMessage = catchAsync(
       messageText,
       messageType,
       isFromAI,
+      media,
     })
 
     res.status(201).json({
