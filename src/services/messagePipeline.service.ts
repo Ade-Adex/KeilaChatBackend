@@ -43,41 +43,45 @@ export class MessagePipeline {
       throw new AppError('Chat session not found', 404)
     }
 
-    /* ****************************************
+  /* ****************************************
      * STEP 1: Process Media & Save message to Database
      **************************************** */
     const options: {
       messageType?: MessageType
       isFromAI?: boolean
       media?: string[]
-      attachments?: Array<{
-        fileUrl: string
-        fileName: string
-        fileType: string
-      }>
+      attachments?: Array<{ fileUrl: string; fileName: string; fileType: string }>
     } = {}
-
-    // Determine context-aware type defaults
-    if (messageType) {
-      options.messageType = messageType as MessageType
-    } else if (media && media.length > 0) {
-      options.messageType = 'media' as any
-    }
 
     if (isFromAI !== undefined) options.isFromAI = isFromAI
     if (media) options.media = media
 
-    // 🎯 TRANSFORM RAW STRING URLS INTO FULLY TYPED STRUCTURED ATTACHMENTS
+    // 🎯 Use a plain string for extraction logic to avoid strict union check errors
+    let finalType: string = messageType || 'text'
+
     if (media && media.length > 0) {
       options.attachments = media.map((url) => {
         let fileType = 'application/octet-stream'
-
+        
         if (url.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
           fileType = 'image/jpeg'
+          if (finalType === 'text' || finalType === 'media') {
+            finalType = 'image'
+          }
         } else if (url.match(/\.(webm|ogg|mp4|mp3|wav|aac|m4a)/i)) {
           fileType = 'audio/webm'
+          if (finalType === 'text' || finalType === 'media') {
+            finalType = 'audio'
+          }
         } else if (url.match(/\.(mov|mkv|wmv)/i)) {
           fileType = 'video/mp4'
+          if (finalType === 'text' || finalType === 'media') {
+            finalType = 'video'
+          }
+        } else {
+          if (finalType === 'text' || finalType === 'media') {
+            finalType = 'file'
+          }
         }
 
         return {
@@ -87,6 +91,9 @@ export class MessagePipeline {
         }
       })
     }
+
+    // 🎯 Safely cast to MessageType now that it's guaranteed to be a valid database value
+    options.messageType = finalType as MessageType
 
     const message = await sendMessage(
       sessionId,
