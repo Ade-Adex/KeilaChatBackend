@@ -148,7 +148,15 @@ export class SocketService {
               .sort({ createdAt: 1 })
               .lean()
 
-            socket.emit('chat_history', messages)
+            // 🔒 Map encryptionIv into iv so the frontend can read decrypted message history cleanly
+            const mappedHistory = messages.map((msg) => ({
+              ...msg,
+              iv: msg.encryptionIv,
+            }))
+
+            socket.emit('chat_history', mappedHistory)
+
+            // socket.emit('chat_history', messages)
 
             if (session.unreadOperator > 0) {
               await markAllSeenInSession(
@@ -409,8 +417,13 @@ export class SocketService {
               createdAt: new Date(),
             })
 
-            // 4. Broadcast the actual message object to everyone in the room (including the visitor)
-            this.io.to(room).emit('new_message', systemMessage)
+            // Turn into a plain object so we can send it through the pipeline cleanly
+            const broadcastSystemMessage = systemMessage.toObject
+              ? systemMessage.toObject()
+              : { ...systemMessage }
+
+            // 4. Broadcast the plain object down to the rooms
+            this.io.to(room).emit('new_message', broadcastSystemMessage)
 
             // 5. Tell the new operator's specific layout stream to join the session
             this.io

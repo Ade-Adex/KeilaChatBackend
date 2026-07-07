@@ -25,6 +25,7 @@ export interface ProcessMessagePayload {
   isEncrypted?: boolean
   encryptionIv?: string
   media?: string[]
+  iv?: string
 }
 
 export class MessagePipeline {
@@ -38,6 +39,7 @@ export class MessagePipeline {
       messageType,
       isFromAI,
       media,
+      iv,
     } = payload
 
     let session = await ChatSession.findById(sessionId)
@@ -45,7 +47,7 @@ export class MessagePipeline {
       throw new AppError('Chat session not found', 404)
     }
 
-  /* ****************************************
+    /* ****************************************
      * STEP 1: Process Media & Save message to Database
      **************************************** */
     const options: {
@@ -63,8 +65,12 @@ export class MessagePipeline {
 
     if (isFromAI !== undefined) options.isFromAI = isFromAI
     if (media) options.media = media
-    if (payload.isEncrypted) options.isEncrypted = payload.isEncrypted
-    if (payload.encryptionIv) options.encryptionIv = payload.encryptionIv
+
+    // 🔒 Map the frontend payload 'iv' parameters securely onto backend criteria options
+    if (iv) {
+      options.isEncrypted = true
+      options.encryptionIv = iv
+    }
 
     // 🎯 Use a plain string for extraction logic to avoid strict union check errors
     let finalType: string = messageType || 'text'
@@ -72,7 +78,7 @@ export class MessagePipeline {
     if (media && media.length > 0) {
       options.attachments = media.map((url) => {
         let fileType = 'application/octet-stream'
-        
+
         if (url.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
           fileType = 'image/jpeg'
           if (finalType === 'text' || finalType === 'media') {
@@ -132,7 +138,13 @@ export class MessagePipeline {
 
     /* ****************************************
      * STEP 3: GLOBAL ROOM BROADCAST & DASHBOARD UPDATE
-     **************************************** */
+     * **************************************** */
+
+    // 🔒 Safely add standard 'iv' to the plain broadcast object for the frontend
+    if (messagePayload.encryptionIv) {
+      Object.assign(messagePayload, { iv: messagePayload.encryptionIv })
+    }
+
     EventService.emitToSession(sessionId, 'new_message', messagePayload)
     EventService.emitToProperty(propertyId, 'dashboard_message_update', {
       sessionId,
