@@ -30,6 +30,7 @@ import type {
 
 import logger from '../bootstrap/logger.js'
 import { ENV } from '../config/env.js'
+import { ServerCryptoEngine } from '../utils/serverCrypto.js'
 
 export class SocketService {
   private io: Server
@@ -148,15 +149,20 @@ export class SocketService {
               .sort({ createdAt: 1 })
               .lean()
 
-            // 🔒 Map encryptionIv into iv so the frontend can read decrypted message history cleanly
-            const mappedHistory = messages.map((msg) => ({
-              ...msg,
-              iv: msg.encryptionIv,
-            }))
+            // 🔒 Transparently decrypt server text values and attach 'iv' keys for frontend hydration updates
+            const mappedHistory = messages.map((msg) => {
+              const plainText = msg.isEncrypted
+                ? msg.messageText
+                : ServerCryptoEngine.decrypt(msg.messageText || '')
+
+              return {
+                ...msg,
+                messageText: plainText,
+                iv: msg.encryptionIv || undefined,
+              }
+            })
 
             socket.emit('chat_history', mappedHistory)
-
-            // socket.emit('chat_history', messages)
 
             if (session.unreadOperator > 0) {
               await markAllSeenInSession(

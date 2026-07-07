@@ -13,6 +13,7 @@ import { AppError } from './appError.js'
 import type { MessageType } from '../types/message.types.js'
 import { Types } from 'mongoose'
 import Message from '../models/Message.js'
+import { ServerCryptoEngine } from '../utils/serverCrypto.js'
 
 export interface ProcessMessagePayload {
   sessionId: string
@@ -119,9 +120,19 @@ export class MessagePipeline {
       options,
     )
 
+    // Convert to standard plain JavaScript object safely
     const messagePayload = message.toObject
       ? message.toObject()
       : { ...message }
+
+    // 🔒 Transparently decode the server crypto text layer for running pipelines and web sockets
+    if (!payload.iv && messagePayload.messageText) {
+      messagePayload.messageText = ServerCryptoEngine.decrypt(
+        messagePayload.messageText,
+      )
+    } else if (messagePayload.encryptionIv) {
+      Object.assign(messagePayload, { iv: messagePayload.encryptionIv })
+    }
 
     /* ****************************************
      * STEP 2: STAMP SENDER METADATA
@@ -139,12 +150,6 @@ export class MessagePipeline {
     /* ****************************************
      * STEP 3: GLOBAL ROOM BROADCAST & DASHBOARD UPDATE
      * **************************************** */
-
-    // 🔒 Safely add standard 'iv' to the plain broadcast object for the frontend
-    if (messagePayload.encryptionIv) {
-      Object.assign(messagePayload, { iv: messagePayload.encryptionIv })
-    }
-
     EventService.emitToSession(sessionId, 'new_message', messagePayload)
     EventService.emitToProperty(propertyId, 'dashboard_message_update', {
       sessionId,
