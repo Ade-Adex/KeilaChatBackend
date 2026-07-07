@@ -22,9 +22,6 @@ const MessageSchema = new Schema<IMessage>(
 
     messageText: { type: String, default: '' },
 
-    // --- 🔒 END-TO-END ENCRYPTION DATA STRUCTURE MATRIX ---
-    isEncrypted: { type: Boolean, default: false },
-    encryptionIv: { type: String, default: '' },
     messageType: {
       type: String,
       enum: [

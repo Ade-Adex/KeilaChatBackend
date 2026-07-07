@@ -13,7 +13,6 @@ import { AppError } from './appError.js'
 import type { MessageType } from '../types/message.types.js'
 import { Types } from 'mongoose'
 import Message from '../models/Message.js'
-import { ServerCryptoEngine } from '../utils/serverCrypto.js'
 
 export interface ProcessMessagePayload {
   sessionId: string
@@ -23,10 +22,7 @@ export interface ProcessMessagePayload {
   messageText: string
   messageType?: 'text' | 'image' | 'video' | 'audio' | 'file' | 'media'
   isFromAI?: boolean
-  isEncrypted?: boolean
-  encryptionIv?: string
   media?: string[]
-  iv?: string
 }
 
 export class MessagePipeline {
@@ -40,7 +36,6 @@ export class MessagePipeline {
       messageType,
       isFromAI,
       media,
-      iv,
     } = payload
 
     let session = await ChatSession.findById(sessionId)
@@ -48,30 +43,18 @@ export class MessagePipeline {
       throw new AppError('Chat session not found', 404)
     }
 
-    /* ****************************************
+  /* ****************************************
      * STEP 1: Process Media & Save message to Database
      **************************************** */
     const options: {
       messageType?: MessageType
       isFromAI?: boolean
       media?: string[]
-      attachments?: Array<{
-        fileUrl: string
-        fileName: string
-        fileType: string
-      }>
-      isEncrypted?: boolean
-      encryptionIv?: string
+      attachments?: Array<{ fileUrl: string; fileName: string; fileType: string }>
     } = {}
 
     if (isFromAI !== undefined) options.isFromAI = isFromAI
     if (media) options.media = media
-
-    // 🔒 Map the frontend payload 'iv' parameters securely onto backend criteria options
-    if (iv) {
-      options.isEncrypted = true
-      options.encryptionIv = iv
-    }
 
     // 🎯 Use a plain string for extraction logic to avoid strict union check errors
     let finalType: string = messageType || 'text'
@@ -79,7 +62,7 @@ export class MessagePipeline {
     if (media && media.length > 0) {
       options.attachments = media.map((url) => {
         let fileType = 'application/octet-stream'
-
+        
         if (url.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
           fileType = 'image/jpeg'
           if (finalType === 'text' || finalType === 'media') {
@@ -120,19 +103,9 @@ export class MessagePipeline {
       options,
     )
 
-    // Convert to standard plain JavaScript object safely
     const messagePayload = message.toObject
       ? message.toObject()
       : { ...message }
-
-    // 🔒 Transparently decode the server crypto text layer for running pipelines and web sockets
-    if (!payload.iv && messagePayload.messageText) {
-      messagePayload.messageText = ServerCryptoEngine.decrypt(
-        messagePayload.messageText,
-      )
-    } else if (messagePayload.encryptionIv) {
-      Object.assign(messagePayload, { iv: messagePayload.encryptionIv })
-    }
 
     /* ****************************************
      * STEP 2: STAMP SENDER METADATA
@@ -149,7 +122,7 @@ export class MessagePipeline {
 
     /* ****************************************
      * STEP 3: GLOBAL ROOM BROADCAST & DASHBOARD UPDATE
-     * **************************************** */
+     **************************************** */
     EventService.emitToSession(sessionId, 'new_message', messagePayload)
     EventService.emitToProperty(propertyId, 'dashboard_message_update', {
       sessionId,

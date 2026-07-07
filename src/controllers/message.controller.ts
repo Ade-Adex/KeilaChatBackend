@@ -35,8 +35,6 @@ export const createMessage = catchAsync(
       messageType,
       isFromAI,
       media,
-      isEncrypted,
-      encryptionIv,
     } = req.body
 
     if (!sessionId) {
@@ -69,8 +67,6 @@ export const createMessage = catchAsync(
       messageType,
       isFromAI,
       media,
-      isEncrypted,
-      encryptionIv,
     })
 
     res.status(201).json({

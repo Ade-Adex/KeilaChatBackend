@@ -5,7 +5,6 @@
 
   import { AppError } from './appError.js'
   import type { MessageType, SenderType } from '../types/message.types.js'
-import { ServerCryptoEngine } from '../utils/serverCrypto.js'
 
   // Send Message
 
@@ -18,8 +17,6 @@ import { ServerCryptoEngine } from '../utils/serverCrypto.js'
       messageType?: MessageType
       isFromAI?: boolean
       media?: string[]
-      isEncrypted?: boolean
-      encryptionIv?: string
     },
   ) {
     const session = await ChatSession.findById(sessionId)
@@ -49,27 +46,24 @@ import { ServerCryptoEngine } from '../utils/serverCrypto.js'
       }
     }
 
-    // 🔒 SECURITY CHECKPOINT: Scramble if it is not true client-side E2EE
-    let dbMessageText = messageText || ''
-    if (options?.isEncrypted) {
-      dbMessageText = messageText // Save client-side E2EE string as-is
-    } else if (dbMessageText.trim()) {
-      dbMessageText = ServerCryptoEngine.encrypt(dbMessageText) // Encrypt plain-text
-    }
-
     const message = await Message.create({
       sessionId,
-      senderType,
-      senderId,
-      messageText: dbMessageText,
-      messageType: calculatedType,
-      status: 'sent',
-      isFromAI: options?.isFromAI ?? false,
-      media: options?.media ?? [],
 
-      // --- 🔒 Map Security States ---
-      isEncrypted: options?.isEncrypted ?? false,
-      encryptionIv: options?.encryptionIv || '',
+      senderType,
+
+      senderId,
+
+      // messageText,
+      messageText: messageText || '',
+
+      // messageType: options?.messageType ?? 'text',
+      messageType: calculatedType,
+
+      status: 'sent',
+
+      isFromAI: options?.isFromAI ?? false,
+
+      media: options?.media ?? [],
     })
 
     // Update analytics
@@ -104,9 +98,9 @@ import { ServerCryptoEngine } from '../utils/serverCrypto.js'
         break
     }
 
-    session.lastMessage = options?.isEncrypted
-      ? '🔒 Encrypted Message'
-      : messageText || `📁 Sent an attachment (${calculatedType})`
+    // Update session preview
+    session.lastMessage =
+      messageText || `📁 Sent an attachment (${calculatedType})`
     session.lastMessageAt = new Date()
 
     await session.save()
@@ -116,33 +110,34 @@ import { ServerCryptoEngine } from '../utils/serverCrypto.js'
 
   // System Message, This is what allows: John joined chat, John left chat, Conversation ended, Conversation transferred
 
- export async function createSystemMessage(sessionId: string, text: string) {
-   // System messages are clear text but should also be encrypted at rest
-   const securedText = ServerCryptoEngine.encrypt(text)
-   return Message.create({
-     sessionId,
-     senderType: 'system',
-     senderId: 'system',
-     messageText: securedText,
-     messageType: 'system',
-     status: 'sent',
-     isFromAI: false,
-   })
- }
+  export async function createSystemMessage(sessionId: string, text: string) {
+    return Message.create({
+      sessionId,
+
+      senderType: 'system',
+
+      senderId: 'system',
+
+      messageText: text,
+
+      messageType: 'system',
+
+      status: 'sent',
+
+      isFromAI: false,
+    })
+  }
 
   // Get Messages
 
   export async function getMessages(sessionId: string) {
-    const records = await Message.find({ sessionId })
-      .sort({ createdAt: 1 })
-      .lean()
-    // 🔒 Decrypt storage layers transparently for past data references
-    return records.map((msg) => {
-      if (!msg.isEncrypted && msg.messageText) {
-        msg.messageText = ServerCryptoEngine.decrypt(msg.messageText)
-      }
-      return msg
+    return Message.find({
+      sessionId,
     })
+      .sort({
+        createdAt: 1,
+      })
+      .lean()
   }
 
   // Delivered

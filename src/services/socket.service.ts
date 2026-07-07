@@ -30,7 +30,6 @@ import type {
 
 import logger from '../bootstrap/logger.js'
 import { ENV } from '../config/env.js'
-import { ServerCryptoEngine } from '../utils/serverCrypto.js'
 
 export class SocketService {
   private io: Server
@@ -149,20 +148,7 @@ export class SocketService {
               .sort({ createdAt: 1 })
               .lean()
 
-            // 🔒 Transparently decrypt server text values and attach 'iv' keys for frontend hydration updates
-            const mappedHistory = messages.map((msg) => {
-              const plainText = msg.isEncrypted
-                ? msg.messageText
-                : ServerCryptoEngine.decrypt(msg.messageText || '')
-
-              return {
-                ...msg,
-                messageText: plainText,
-                iv: msg.encryptionIv || undefined,
-              }
-            })
-
-            socket.emit('chat_history', mappedHistory)
+            socket.emit('chat_history', messages)
 
             if (session.unreadOperator > 0) {
               await markAllSeenInSession(
@@ -269,37 +255,6 @@ export class SocketService {
             }
           } catch (error) {
             logger.error(error, 'Error setting delivery confirmation state')
-          }
-        },
-      )
-
-      /*
-       ****************************************
-       * 🔒 CRYPTOGRAPHIC PUBLIC KEY DISTRIBUTION EXCHANGE
-       ****************************************
-       */
-      socket.on(
-        'share_public_key',
-        (data: {
-          sessionId: string
-          publicKey: any
-          clientType: 'visitor' | 'operator'
-        }) => {
-          try {
-            if (!data.sessionId) return
-            // Forward the public key configuration down to the opposite participant room context
-            socket.to(`session:${data.sessionId}`).emit('public_key_received', {
-              publicKey: data.publicKey,
-              clientType: data.clientType,
-            })
-            logger.info(
-              `🔑 Key distributed across session room: ${data.sessionId} via ${data.clientType}`,
-            )
-          } catch (error) {
-            logger.error(
-              error,
-              'Failed to proxy cryptographic handshake metrics securely',
-            )
           }
         },
       )
@@ -423,13 +378,8 @@ export class SocketService {
               createdAt: new Date(),
             })
 
-            // Turn into a plain object so we can send it through the pipeline cleanly
-            const broadcastSystemMessage = systemMessage.toObject
-              ? systemMessage.toObject()
-              : { ...systemMessage }
-
-            // 4. Broadcast the plain object down to the rooms
-            this.io.to(room).emit('new_message', broadcastSystemMessage)
+            // 4. Broadcast the actual message object to everyone in the room (including the visitor)
+            this.io.to(room).emit('new_message', systemMessage)
 
             // 5. Tell the new operator's specific layout stream to join the session
             this.io
