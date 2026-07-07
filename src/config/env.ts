@@ -15,6 +15,17 @@ const getRequiredEnv = (key: string): string => {
   return value
 }
 
+// Custom validation for the 32-byte (64 hex characters) crypto secret key
+const getCryptoSecret = (): string => {
+  const value = getRequiredEnv('SERVER_CRYPTO_SECRET')
+  if (value.length !== 64) {
+    throw new Error(
+      'FATAL ERROR: SERVER_CRYPTO_SECRET must be an exact 64-character hexadecimal string.',
+    )
+  }
+  return value
+}
+
 export const ENV = {
   PORT: process.env.PORT || '5000',
   MONGO_URI: getRequiredEnv('MONGO_URI'),
@@ -33,11 +44,15 @@ export const ENV = {
       process.env.RESEND_MAIL_USER || 'no-reply@mail.christbcogbomoso.org',
   },
 
-  // 🎯 ADD THIS CLOUDINARY CONFIG BLOCK
   CLOUDINARY: {
     CLOUD_NAME: getRequiredEnv('CLOUDINARY_CLOUD_NAME'),
     API_KEY: getRequiredEnv('CLOUDINARY_API_KEY'),
     API_SECRET: getRequiredEnv('CLOUDINARY_API_SECRET'),
+  },
+
+  // 🔒 SERVER SIDE SECURITY AT REST SECRET MATRIX
+  CRYPTO: {
+    SECRET_HEX: getCryptoSecret(),
   },
 
   BASE_URL: process.env.BASE_URL,
