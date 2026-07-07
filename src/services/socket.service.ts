@@ -261,6 +261,37 @@ export class SocketService {
 
       /*
        ****************************************
+       * 🔒 CRYPTOGRAPHIC PUBLIC KEY DISTRIBUTION EXCHANGE
+       ****************************************
+       */
+      socket.on(
+        'share_public_key',
+        (data: {
+          sessionId: string
+          publicKey: any
+          clientType: 'visitor' | 'operator'
+        }) => {
+          try {
+            if (!data.sessionId) return
+            // Forward the public key configuration down to the opposite participant room context
+            socket.to(`session:${data.sessionId}`).emit('public_key_received', {
+              publicKey: data.publicKey,
+              clientType: data.clientType,
+            })
+            logger.info(
+              `🔑 Key distributed across session room: ${data.sessionId} via ${data.clientType}`,
+            )
+          } catch (error) {
+            logger.error(
+              error,
+              'Failed to proxy cryptographic handshake metrics securely',
+            )
+          }
+        },
+      )
+
+      /*
+       ****************************************
        * 🎯 NEW: BULK WINDOW SEEN RECEIPT LISTENER
        ****************************************
        */

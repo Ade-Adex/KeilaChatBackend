@@ -17,6 +17,8 @@
       messageType?: MessageType
       isFromAI?: boolean
       media?: string[]
+      isEncrypted?: boolean
+      encryptionIv?: string
     },
   ) {
     const session = await ChatSession.findById(sessionId)
@@ -48,22 +50,17 @@
 
     const message = await Message.create({
       sessionId,
-
       senderType,
-
       senderId,
-
-      // messageText,
       messageText: messageText || '',
-
-      // messageType: options?.messageType ?? 'text',
       messageType: calculatedType,
-
       status: 'sent',
-
       isFromAI: options?.isFromAI ?? false,
-
       media: options?.media ?? [],
+
+      // --- 🔒 Map Security States ---
+      isEncrypted: options?.isEncrypted ?? false,
+      encryptionIv: options?.encryptionIv || '',
     })
 
     // Update analytics
@@ -98,10 +95,10 @@
         break
     }
 
-    // Update session preview
-    session.lastMessage =
-      messageText || `📁 Sent an attachment (${calculatedType})`
-    session.lastMessageAt = new Date()
+   session.lastMessage = options?.isEncrypted
+     ? '🔒 Encrypted Message'
+     : messageText || `📁 Sent an attachment (${calculatedType})`
+   session.lastMessageAt = new Date()
 
     await session.save()
 

@@ -41,6 +41,8 @@ export interface IMessage extends BaseEntity {
   messageType: MessageType
   status: MessageStatus
   isFromAI: boolean
+  isEncrypted: boolean
+  encryptionIv?: string
   aiMetadata?: AIMessageMetadata
   attachments: MessageAttachment[]
   media?: string[]

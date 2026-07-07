@@ -22,6 +22,8 @@ export interface ProcessMessagePayload {
   messageText: string
   messageType?: 'text' | 'image' | 'video' | 'audio' | 'file' | 'media'
   isFromAI?: boolean
+  isEncrypted?: boolean
+  encryptionIv?: string
   media?: string[]
 }
 
@@ -50,11 +52,19 @@ export class MessagePipeline {
       messageType?: MessageType
       isFromAI?: boolean
       media?: string[]
-      attachments?: Array<{ fileUrl: string; fileName: string; fileType: string }>
+      attachments?: Array<{
+        fileUrl: string
+        fileName: string
+        fileType: string
+      }>
+      isEncrypted?: boolean
+      encryptionIv?: string
     } = {}
 
     if (isFromAI !== undefined) options.isFromAI = isFromAI
     if (media) options.media = media
+    if (payload.isEncrypted) options.isEncrypted = payload.isEncrypted
+    if (payload.encryptionIv) options.encryptionIv = payload.encryptionIv
 
     // 🎯 Use a plain string for extraction logic to avoid strict union check errors
     let finalType: string = messageType || 'text'
