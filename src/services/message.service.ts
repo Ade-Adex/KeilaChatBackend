@@ -1,11 +1,11 @@
   // /src/services/message.service.ts
 
-  import Message from '../models/Message.js'
   import ChatSession from '../models/ChatSession.js'
+import Message from '../models/Message.js'
 
-  import { AppError } from './appError.js'
-  import type { MessageType, SenderType } from '../types/message.types.js'
-import { encryptionService } from '../lib/security/encryption.service.js'
+  import { encryptionService } from '../lib/security/encryption.service.js'
+import type { MessageType, SenderType } from '../types/message.types.js'
+import { AppError } from './appError.js'
 
   // Send Message
 
@@ -67,60 +67,45 @@ import { encryptionService } from '../lib/security/encryption.service.js'
     //   media: options?.media ?? [],
     // })
 
+        const encryptedMessage = messageText
+          ? encryptionService.encrypt(messageText)
+          : undefined
 
-    const encryptedMessage = encryptionService.encrypt(messageText || '')
+        const messagePayload: Record<string, unknown> = {
+          sessionId,
+          senderType,
+          senderId,
+          messageType: calculatedType,
+          status: 'sent',
+          isFromAI: options?.isFromAI ?? false,
+          media: options?.media ?? [],
+        }
 
-    const message = await Message.create({
-      sessionId,
+        if (encryptedMessage) {
+          messagePayload.encryptedMessage = encryptedMessage
+        }
 
-      senderType,
+        const message = await Message.create(messagePayload as any)
 
-      senderId,
+        switch (senderType) {
+          case 'operator':
+            session.analytics.operatorMessages += 1
+            session.unreadVisitor += 1
+            break
 
-      encryptedMessage,
+          case 'ai':
+            session.analytics.aiMessages += 1
+            session.unreadVisitor += 1
+            break
 
-      messageType: calculatedType,
+          case 'visitor':
+            session.unreadOperator += 1
+            break
 
-      status: 'sent',
-
-      isFromAI: options?.isFromAI ?? false,
-
-      media: options?.media ?? [],
-    })
-
-
-
-    // Update analytics
-    session.analytics ??= {
-      totalMessages: 0,
-      visitorMessages: 0,
-      operatorMessages: 0,
-      aiMessages: 0,
-      averageReplyTime: 0,
-      duration: 0,
-    }
-
-    session.analytics.totalMessages += 1
-
-    switch (senderType) {
-      case 'visitor':
-        session.analytics.visitorMessages += 1
-        session.unreadOperator += 1
-        break
-
-      case 'operator':
-        session.analytics.operatorMessages += 1
-        session.unreadVisitor += 1
-        break
-
-      case 'ai':
-        session.analytics.aiMessages += 1
-        session.unreadVisitor += 1
-        break
-
-      case 'system':
-        break
-    }
+          case 'system':
+          default:
+            break
+        }
 
     // Update session preview
     session.lastMessage =
@@ -128,7 +113,6 @@ import { encryptionService } from '../lib/security/encryption.service.js'
     session.lastMessageAt = new Date()
 
     await session.save()
-
 
     const result = message.toObject()
 

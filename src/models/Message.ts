@@ -104,15 +104,6 @@
 
 // export default model<IMessage>('Message', MessageSchema)
 
-
-
-
-
-
-
-
-
-
 // /src/models/Message.ts
 
 import { Schema, model } from 'mongoose'
@@ -155,29 +146,30 @@ const MessageSchema = new Schema<IMessage>(
      ****************************************
      */
     encryptedMessage: {
-      cipherText: {
-        type: String,
-        required: true,
-        default: '',
+      type: {
+        cipherText: {
+          type: String,
+          default: '',
+        },
+        iv: {
+          type: String,
+          default: '',
+        },
+        authTag: {
+          type: String,
+          default: '',
+        },
+        algorithm: {
+          type: String,
+          default: 'aes-256-gcm',
+        },
+        keyVersion: {
+          type: Number,
+          default: 1,
+        },
       },
-      iv: {
-        type: String,
-        required: true,
-        default: '',
-      },
-      authTag: {
-        type: String,
-        required: true,
-        default: '',
-      },
-      algorithm: {
-        type: String,
-        default: 'aes-256-gcm',
-      },
-      keyVersion: {
-        type: Number,
-        default: 1,
-      },
+      required: false,
+      select: false,
     },
 
     messageType: {

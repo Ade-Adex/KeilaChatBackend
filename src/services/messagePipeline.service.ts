@@ -1,19 +1,19 @@
 // /src/services/messagePipeline.service.ts
 
+import { Types } from 'mongoose'
+import { encryptionService } from '../lib/security/encryption.service.js'
 import ChatSession from '../models/ChatSession.js'
+import Message from '../models/Message.js'
 import Operator from '../models/Operator.js'
 import Property from '../models/Property.js'
-import { sendMessage, createSystemMessage } from './message.service.js'
-import { EventService } from './event.service.js'
-import { QueueService } from './queue.service.js'
-import { AssignmentService } from './assignment.service.js'
-import { AIService } from './ai.service.js'
-import { getAvailableOperators } from './operator.service.js'
-import { AppError } from './appError.js'
 import type { MessageType } from '../types/message.types.js'
-import { Types } from 'mongoose'
-import Message from '../models/Message.js'
-import { encryptionService } from '../lib/security/encryption.service.js'
+import { AIService } from './ai.service.js'
+import { AppError } from './appError.js'
+import { AssignmentService } from './assignment.service.js'
+import { EventService } from './event.service.js'
+import { createSystemMessage, sendMessage } from './message.service.js'
+import { getAvailableOperators } from './operator.service.js'
+import { QueueService } from './queue.service.js'
 
 export interface ProcessMessagePayload {
   sessionId: string
@@ -108,11 +108,7 @@ export class MessagePipeline {
       options,
     )
 
-    // const messagePayload = message.toObject
-    //   ? message.toObject()
-    //   : { ...message }
-
-    const messagePayload = message
+    const messagePayload = message as any
 
     /* ****************************************
      * STEP 2: STAMP SENDER METADATA
@@ -245,7 +241,7 @@ export class MessagePipeline {
               { messageType: 'text' as any, isFromAI: true },
             )
 
-           EventService.emitToSession(sessionId, 'new_message', aiFallbackMsg)
+            EventService.emitToSession(sessionId, 'new_message', aiFallbackMsg)
             return messagePayload
           }
         }
