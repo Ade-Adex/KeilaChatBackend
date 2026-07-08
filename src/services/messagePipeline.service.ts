@@ -13,6 +13,7 @@ import { AppError } from './appError.js'
 import type { MessageType } from '../types/message.types.js'
 import { Types } from 'mongoose'
 import Message from '../models/Message.js'
+import { encryptionService } from '../lib/security/encryption.service.js'
 
 export interface ProcessMessagePayload {
   sessionId: string
@@ -43,14 +44,18 @@ export class MessagePipeline {
       throw new AppError('Chat session not found', 404)
     }
 
-  /* ****************************************
+    /* ****************************************
      * STEP 1: Process Media & Save message to Database
      **************************************** */
     const options: {
       messageType?: MessageType
       isFromAI?: boolean
       media?: string[]
-      attachments?: Array<{ fileUrl: string; fileName: string; fileType: string }>
+      attachments?: Array<{
+        fileUrl: string
+        fileName: string
+        fileType: string
+      }>
     } = {}
 
     if (isFromAI !== undefined) options.isFromAI = isFromAI
@@ -62,7 +67,7 @@ export class MessagePipeline {
     if (media && media.length > 0) {
       options.attachments = media.map((url) => {
         let fileType = 'application/octet-stream'
-        
+
         if (url.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
           fileType = 'image/jpeg'
           if (finalType === 'text' || finalType === 'media') {
@@ -103,9 +108,11 @@ export class MessagePipeline {
       options,
     )
 
-    const messagePayload = message.toObject
-      ? message.toObject()
-      : { ...message }
+    // const messagePayload = message.toObject
+    //   ? message.toObject()
+    //   : { ...message }
+
+    const messagePayload = message
 
     /* ****************************************
      * STEP 2: STAMP SENDER METADATA
@@ -178,11 +185,21 @@ export class MessagePipeline {
               transferText,
             )
 
-            EventService.emitToSession(
-              sessionId,
-              'new_message',
-              systemNotice.toObject ? systemNotice.toObject() : systemNotice,
-            )
+            // EventService.emitToSession(
+            //   sessionId,
+            //   'new_message',
+            //   systemNotice.toObject ? systemNotice.toObject() : systemNotice,
+            // )
+
+            const systemPayload = {
+              ...(systemNotice.toObject
+                ? systemNotice.toObject()
+                : { ...systemNotice }),
+              messageText: transferText,
+            }
+
+            EventService.emitToSession(sessionId, 'new_message', systemPayload)
+
             EventService.emitToSession(sessionId, 'session_status_changed', {
               sessionId,
               status: 'active',
@@ -227,20 +244,29 @@ export class MessagePipeline {
               fallbackReply,
               { messageType: 'text' as any, isFromAI: true },
             )
-            EventService.emitToSession(
-              sessionId,
-              'new_message',
-              aiFallbackMsg.toObject ? aiFallbackMsg.toObject() : aiFallbackMsg,
-            )
+
+           EventService.emitToSession(sessionId, 'new_message', aiFallbackMsg)
             return messagePayload
           }
         }
 
         /* --- SUB-ROUTE B: STANDARD INCOMING AI EVALUATION --- */
-        const historyMessages = await Message.find({ sessionId })
-          .sort({ createdAt: -1 })
-          .limit(10)
-          .lean()
+        // const historyMessages = await Message.find({ sessionId })
+        //   .sort({ createdAt: -1 })
+        //   .limit(10)
+        //   .lean()
+
+        const historyMessages = (
+          await Message.find({ sessionId })
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean()
+        ).map((message) => ({
+          ...message,
+          messageText: message.encryptedMessage
+            ? encryptionService.decrypt(message.encryptedMessage)
+            : '',
+        }))
 
         // Give the text (or context indication of file) to AI evaluation
         const aiResponse = await AIService.generateReply(
@@ -259,9 +285,12 @@ export class MessagePipeline {
           },
         )
 
-        const aiPayload = aiMessage.toObject
-          ? aiMessage.toObject()
-          : { ...aiMessage }
+        // const aiPayload = aiMessage.toObject
+        //   ? aiMessage.toObject()
+        //   : { ...aiMessage }
+
+        const aiPayload = aiMessage
+
         EventService.emitToSession(sessionId, 'new_message', aiPayload)
         EventService.emitToProperty(propertyId, 'dashboard_message_update', {
           sessionId,

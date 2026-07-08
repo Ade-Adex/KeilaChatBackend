@@ -13,6 +13,7 @@ import {
   markSeen,
 } from '../services/message.service.js'
 import { MessagePipeline } from '../services/messagePipeline.service.js'
+import ChatSession from '../models/ChatSession.js'
 
 function getParam(value: string | string[] | undefined, name: string): string {
   if (!value || Array.isArray(value)) {
@@ -57,10 +58,17 @@ export const createMessage = catchAsync(
       }
     }
 
+    const session = await ChatSession.findById(sessionId)
+
+    if (!session) {
+      return next(new AppError('Chat session not found.', 404))
+    }
+
     // 3. Forward complete sanitised context to pipeline execution layer
     const message = await MessagePipeline.processMessage({
       sessionId,
-      propertyId: req.body.propertyId,
+      // propertyId: req.body.propertyId,
+      propertyId: session.propertyId.toString(),
       senderType,
       senderId: finalSenderId, // <-- Fixed: Passes down verified ID
       messageText,

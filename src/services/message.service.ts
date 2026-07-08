@@ -5,6 +5,7 @@
 
   import { AppError } from './appError.js'
   import type { MessageType, SenderType } from '../types/message.types.js'
+import { encryptionService } from '../lib/security/encryption.service.js'
 
   // Send Message
 
@@ -46,6 +47,29 @@
       }
     }
 
+    // const message = await Message.create({
+    //   sessionId,
+
+    //   senderType,
+
+    //   senderId,
+
+    //   // messageText,
+    //   messageText: messageText || '',
+
+    //   // messageType: options?.messageType ?? 'text',
+    //   messageType: calculatedType,
+
+    //   status: 'sent',
+
+    //   isFromAI: options?.isFromAI ?? false,
+
+    //   media: options?.media ?? [],
+    // })
+
+
+    const encryptedMessage = encryptionService.encrypt(messageText || '')
+
     const message = await Message.create({
       sessionId,
 
@@ -53,10 +77,8 @@
 
       senderId,
 
-      // messageText,
-      messageText: messageText || '',
+      encryptedMessage,
 
-      // messageType: options?.messageType ?? 'text',
       messageType: calculatedType,
 
       status: 'sent',
@@ -65,6 +87,8 @@
 
       media: options?.media ?? [],
     })
+
+
 
     // Update analytics
     session.analytics ??= {
@@ -105,12 +129,36 @@
 
     await session.save()
 
-    return message
+
+    const result = message.toObject()
+
+    result.messageText = messageText || ''
+
+    return result
+
+    // return message
   }
 
   // System Message, This is what allows: John joined chat, John left chat, Conversation ended, Conversation transferred
 
   export async function createSystemMessage(sessionId: string, text: string) {
+    // return Message.create({
+    //   sessionId,
+
+    //   senderType: 'system',
+
+    //   senderId: 'system',
+
+    //   messageText: text,
+
+    //   messageType: 'system',
+
+    //   status: 'sent',
+
+    //   isFromAI: false,
+    // })
+
+
     return Message.create({
       sessionId,
 
@@ -118,7 +166,7 @@
 
       senderId: 'system',
 
-      messageText: text,
+      encryptedMessage: encryptionService.encrypt(text),
 
       messageType: 'system',
 
@@ -130,14 +178,32 @@
 
   // Get Messages
 
+  // export async function getMessages(sessionId: string) {
+  //   return Message.find({
+  //     sessionId,
+  //   })
+  //     .sort({
+  //       createdAt: 1,
+  //     })
+  //     .lean()
+  // }
+
+
   export async function getMessages(sessionId: string) {
-    return Message.find({
+    const messages = await Message.find({
       sessionId,
     })
       .sort({
         createdAt: 1,
       })
       .lean()
+
+    return messages.map((message: any) => ({
+      ...message,
+      messageText: message.encryptedMessage
+        ? encryptionService.decrypt(message.encryptedMessage)
+        : '',
+    }))
   }
 
   // Delivered

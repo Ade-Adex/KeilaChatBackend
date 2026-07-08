@@ -1,433 +1,492 @@
-// /src/services/socket.service.ts
+  // /src/services/socket.service.ts
 
-import { Server } from 'socket.io'
-import type { Socket } from 'socket.io'
-import type { Server as HttpServer } from 'http'
+  import { Server } from 'socket.io'
+  import type { Socket } from 'socket.io'
+  import type { Server as HttpServer } from 'http'
 
-import { MessagePipeline } from './messagePipeline.service.js'
-import { EventService } from './event.service.js'
-import { PresenceService } from './presence.service.js'
+  import { MessagePipeline } from './messagePipeline.service.js'
+  import { EventService } from './event.service.js'
+  import { PresenceService } from './presence.service.js'
 
-import Operator from '../models/Operator.js'
-import ChatSession from '../models/ChatSession.js'
-import Message from '../models/Message.js'
+  import Operator from '../models/Operator.js'
+  import ChatSession from '../models/ChatSession.js'
+  import Message from '../models/Message.js'
 
-import {
-  operatorJoined,
-  markDelivered,
-  markSeen,
-  markAllDelivered,
-  markAllSeenInSession,
-} from './message.service.js'
+  import {
+    operatorJoined,
+    markDelivered,
+    markSeen,
+    markAllDelivered,
+    markAllSeenInSession,
+    createSystemMessage,
+  } from './message.service.js'
 
-import type {
-  JoinChatPayload,
-  TypingPayload,
-  SendMessagePayload,
-  JoinDashboardPayload,
-  NotificationPayload,
-} from '../types/socket.types.js'
+  import type {
+    JoinChatPayload,
+    TypingPayload,
+    SendMessagePayload,
+    JoinDashboardPayload,
+    NotificationPayload,
+  } from '../types/socket.types.js'
 
-import logger from '../bootstrap/logger.js'
-import { ENV } from '../config/env.js'
+  import logger from '../bootstrap/logger.js'
+  import { ENV } from '../config/env.js'
+import { encryptionService } from '../lib/security/encryption.service.js'
 
-export class SocketService {
-  private io: Server
+  export class SocketService {
+    private io: Server
 
-  constructor(server: HttpServer) {
-    this.io = new Server(server, {
-      cors: {
-        origin: ENV.BASE_URL,
-        credentials: true,
-        methods: ['GET', 'POST'],
-      },
-    })
-
-    EventService.init(this.io)
-    this.initializeEvents()
-  }
-
-  private initializeEvents(): void {
-    this.io.on('connection', (socket: Socket) => {
-      logger.info(`🔌 Connected: ${socket.id}`)
-
-      /*
-       ****************************************
-       * JOIN PROPERTY DASHBOARD
-       ****************************************
-       */
-      socket.on(
-        'join_property_dashboard',
-        async ({ propertyId, operatorId }: JoinDashboardPayload) => {
-          try {
-            if (!propertyId) return
-
-            socket.join(`property:dashboard:${propertyId}`)
-
-            if (operatorId) {
-              socket.join(`operator:${operatorId}`)
-              socket.data.operatorId = operatorId
-
-              await PresenceService.setOperatorOnline(operatorId, socket.id)
-            }
-
-            logger.info(`📊 Dashboard joined: ${propertyId}`)
-          } catch (error) {
-            logger.error(error, 'join_property_dashboard failed')
-          }
+    constructor(server: HttpServer) {
+      this.io = new Server(server, {
+        cors: {
+          origin: ENV.BASE_URL,
+          credentials: true,
+          methods: ['GET', 'POST'],
         },
-      )
-
-      /* -------------------------------------------------- */
-      /* JOIN CHAT SESSION                                  */
-      /* -------------------------------------------------- */
-      socket.on('join_chat_session', async (data: JoinChatPayload) => {
-        try {
-          if (!data.sessionId) return
-
-          const room = `session:${data.sessionId}`
-          socket.join(room)
-
-          if (data.visitorId) {
-            socket.join(`visitor:${data.visitorId}`)
-            socket.data.visitorId = data.visitorId
-            await PresenceService.setVisitorActive(
-              data.visitorId,
-              data.sessionId,
-            )
-          }
-
-          const session = await ChatSession.findById(data.sessionId)
-
-          if (data.clientType === 'operator' && data.operatorId && session) {
-            socket.join(`property:dashboard:${session.propertyId.toString()}`)
-            socket.join(`operator:${data.operatorId}`)
-            socket.data.operatorId = data.operatorId
-
-            await PresenceService.setOperatorOnline(data.operatorId, socket.id)
-
-            // 🛡️ ONLY intercept if AI is off, or the conversation was explicitly escalated/queued for human eyes.
-            const isReadyForHuman =
-              !session.aiEnabled ||
-              session.aiEscalated ||
-              session.status === 'queued'
-
-            if (
-              isReadyForHuman &&
-              (session.status === 'queued' ||
-                session.status === 'waiting' ||
-                !session.assignedOperatorId)
-            ) {
-              await ChatSession.findByIdAndUpdate(data.sessionId, {
-                status: 'active',
-                assignedOperatorId: data.operatorId,
-              })
-
-              // Notify the visitor widget and refresh the dashboard panels globally
-              this.io.to(room).emit('session_status_changed', {
-                sessionId: data.sessionId,
-                status: 'active',
-              })
-              this.io
-                .to(`property:dashboard:${session.propertyId}`)
-                .emit('dashboard_refresh_request')
-            }
-
-            const operatorProfile = await Operator.findById(data.operatorId)
-              .select('firstName avatar')
-              .lean()
-            if (operatorProfile) {
-              this.io.to(room).emit('operator_joined', {
-                operatorId: data.operatorId,
-                name: operatorProfile.firstName?.trim() || 'Support Agent',
-                avatar: operatorProfile.avatar || '',
-              })
-            }
-
-            const messages = await Message.find({ sessionId: data.sessionId })
-              .sort({ createdAt: 1 })
-              .lean()
-
-            socket.emit('chat_history', messages)
-
-            if (session.unreadOperator > 0) {
-              await markAllSeenInSession(
-                data.sessionId,
-                'visitor',
-                data.operatorId,
-              )
-              this.io.to(room).emit('messages_seen', {
-                sessionId: data.sessionId,
-                reader: 'operator',
-              })
-
-              this.io
-                .to(`property:dashboard:${session.propertyId}`)
-                .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
-            }
-          }
-
-          if (data.clientType === 'visitor' && session) {
-            // Let ClientChatWrapper handle triggering read status explicitly via 'mark_session_seen' when open === true.
-            await markAllDelivered(data.sessionId, 'operator')
-            await markAllDelivered(data.sessionId, 'ai')
-
-            this.io.to(room).emit('messages_delivered_bulk', {
-              sessionId: data.sessionId,
-              senderType: 'operator',
-            })
-          }
-
-          socket.to(room).emit('presence_notification', {
-            message: `${data.clientType} joined chat`,
-          })
-
-          logger.info(`💬 Joined session ${data.sessionId}`)
-        } catch (error) {
-          logger.error(error, 'join_chat_session failed')
-        }
       })
 
-      /*
-       ****************************************
-       * TYPING EVENT PIPELINE
-       ****************************************
-       */
-      socket.on('typing', (data: TypingPayload) => {
-        try {
-          if (!data.sessionId) return
+      EventService.init(this.io)
+      this.initializeEvents()
+    }
 
-          const calculatedActor =
-            data.senderName?.toLowerCase() === 'visitor'
-              ? 'visitor'
-              : 'operator'
+    private initializeEvents(): void {
+      this.io.on('connection', (socket: Socket) => {
+        logger.info(`🔌 Connected: ${socket.id}`)
 
-          socket.to(`session:${data.sessionId}`).emit('user_typing', {
-            sessionId: data.sessionId,
-            senderName: data.senderName,
-            isTyping: data.isTyping,
-            actor: calculatedActor,
-          })
-        } catch (error) {
-          logger.error(error, 'Real-time typing event routing pipeline crashed')
-        }
-      })
+        /*
+        ****************************************
+        * JOIN PROPERTY DASHBOARD
+        ****************************************
+        */
+        socket.on(
+          'join_property_dashboard',
+          async ({ propertyId, operatorId }: JoinDashboardPayload) => {
+            try {
+              if (!propertyId) return
 
-      /* -------------------------------------------------- */
-      /* SEND MESSAGE                                       */
-      /* -------------------------------------------------- */
-      socket.on('send_message', async (data: SendMessagePayload) => {
-        try {
-          // MessagePipeline already handles global room emissions and dashboard sync updates internally!
-          const message = await MessagePipeline.processMessage(data)
+              socket.join(`property:dashboard:${propertyId}`)
 
-          // Only send the lightweight operational acknowledgment back to the source socket
-          socket.emit('message_ack', {
-            messageId: message._id,
-            sessionId: data.sessionId,
-          })
-        } catch (error) {
-          logger.error(error, 'Socket message processing failed')
-          socket.emit('message_error', { message: 'Message processing failed' })
-        }
-      })
+              if (operatorId) {
+                socket.join(`operator:${operatorId}`)
+                socket.data.operatorId = operatorId
 
-      /*
-       ****************************************
-       * 🎯 NEW: MESSAGE DELIVERED RECEIPT LISTENER
-       ****************************************
-       */
-      socket.on(
-        'message_delivered',
-        async (data: { messageId: string; sessionId: string }) => {
-          try {
-            if (!data.messageId) return
-            const updatedMessage = await markDelivered(data.messageId)
+                await PresenceService.setOperatorOnline(operatorId, socket.id)
+              }
 
-            if (updatedMessage) {
-              this.io
-                .to(`session:${data.sessionId}`)
-                .emit('message_status_updated', {
-                  messageId: data.messageId,
-                  sessionId: data.sessionId,
-                  status: 'delivered',
-                })
+              logger.info(`📊 Dashboard joined: ${propertyId}`)
+            } catch (error) {
+              logger.error(error, 'join_property_dashboard failed')
             }
-          } catch (error) {
-            logger.error(error, 'Error setting delivery confirmation state')
-          }
-        },
-      )
+          },
+        )
 
-      /*
-       ****************************************
-       * 🎯 NEW: BULK WINDOW SEEN RECEIPT LISTENER
-       ****************************************
-       */
-      socket.on(
-        'mark_session_seen',
-        async (data: {
-          sessionId: string
-          clientType: 'visitor' | 'operator'
-          operatorId?: string
-        }) => {
+        /* -------------------------------------------------- */
+        /* JOIN CHAT SESSION                                  */
+        /* -------------------------------------------------- */
+        socket.on('join_chat_session', async (data: JoinChatPayload) => {
           try {
             if (!data.sessionId) return
 
-            // If operator views it, visitor's messages are read. If visitor views it, operator/ai messages are read.
-            const targetSenderType =
-              data.clientType === 'operator' ? 'visitor' : 'operator'
+            const room = `session:${data.sessionId}`
+            socket.join(room)
 
-            await markAllSeenInSession(
-              data.sessionId,
-              targetSenderType,
-              data.operatorId,
-            )
-            if (targetSenderType === 'operator') {
-              await markAllSeenInSession(data.sessionId, 'ai', data.operatorId)
+            if (data.visitorId) {
+              socket.join(`visitor:${data.visitorId}`)
+              socket.data.visitorId = data.visitorId
+              await PresenceService.setVisitorActive(
+                data.visitorId,
+                data.sessionId,
+              )
             }
 
-            const session = await ChatSession.findById(data.sessionId).lean()
+            const session = await ChatSession.findById(data.sessionId)
 
-            // Broadcast state shift down to open windows
-            this.io.to(`session:${data.sessionId}`).emit('messages_seen', {
-              sessionId: data.sessionId,
-              reader: data.clientType,
-            })
+            if (data.clientType === 'operator' && data.operatorId && session) {
+              socket.join(`property:dashboard:${session.propertyId.toString()}`)
+              socket.join(`operator:${data.operatorId}`)
+              socket.data.operatorId = data.operatorId
 
-            // Sync dashboard sidebar unread badge removals
-            if (session && data.clientType === 'operator') {
-              this.io
-                .to(`property:dashboard:${session.propertyId.toString()}`)
-                .emit('dashboard_unread_cleared', {
+              await PresenceService.setOperatorOnline(data.operatorId, socket.id)
+
+              // 🛡️ ONLY intercept if AI is off, or the conversation was explicitly escalated/queued for human eyes.
+              const isReadyForHuman =
+                !session.aiEnabled ||
+                session.aiEscalated ||
+                session.status === 'queued'
+
+              if (
+                isReadyForHuman &&
+                (session.status === 'queued' ||
+                  session.status === 'waiting' ||
+                  !session.assignedOperatorId)
+              ) {
+                await ChatSession.findByIdAndUpdate(data.sessionId, {
+                  status: 'active',
+                  assignedOperatorId: data.operatorId,
+                })
+
+                // Notify the visitor widget and refresh the dashboard panels globally
+                this.io.to(room).emit('session_status_changed', {
+                  sessionId: data.sessionId,
+                  status: 'active',
+                })
+                this.io
+                  .to(`property:dashboard:${session.propertyId}`)
+                  .emit('dashboard_refresh_request')
+              }
+
+              const operatorProfile = await Operator.findById(data.operatorId)
+                .select('firstName avatar')
+                .lean()
+              if (operatorProfile) {
+                this.io.to(room).emit('operator_joined', {
+                  operatorId: data.operatorId,
+                  name: operatorProfile.firstName?.trim() || 'Support Agent',
+                  avatar: operatorProfile.avatar || '',
+                })
+              }
+
+              // const messages = await Message.find({ sessionId: data.sessionId })
+              //   .sort({ createdAt: 1 })
+              //   .lean()
+
+              // socket.emit('chat_history', messages)
+
+
+              const messages = (
+                await Message.find({
                   sessionId: data.sessionId,
                 })
-            }
-          } catch (error) {
-            logger.error(
-              error,
-              'Failed to map bulk session seen confirmation loops',
-            )
-          }
-        },
-      )
+                  .sort({
+                    createdAt: 1,
+                  })
+                  .lean()
+              ).map((message: any) => {
+                try {
+                  return {
+                    ...message,
+                    messageText:
+                      message.encryptedMessage &&
+                      encryptionService.isEncrypted(message.encryptedMessage)
+                        ? encryptionService.decrypt(message.encryptedMessage)
+                        : '',
+                  }
+                } catch (error) {
+                  logger.error(error, 'Failed to decrypt chat history message')
 
-      /*
-       ****************************************
-       * JOIN NOTIFICATIONS
-       ****************************************
-       */
-      socket.on('join_notifications', ({ propertyId }: NotificationPayload) => {
-        if (!propertyId) return
-
-        socket.join(`property:dashboard:${propertyId}`)
-        logger.info(`🔔 Notification room joined ${propertyId}`)
-      })
-
-      /*
-       ****************************************
-       * HEARTBEAT
-       ****************************************
-       */
-      socket.on('ping_server', () => {
-        socket.emit('pong_server')
-      })
-
-      /*
-       ****************************************
-       * 🎯 NEW: CHAT TRANSFER AGENT PIPELINE
-       ****************************************
-       */
-      socket.on(
-        'transfer_chat_session',
-        async (data: { sessionId: string; targetOperatorId: string }) => {
-          try {
-            if (!data.sessionId || !data.targetOperatorId) return
-
-            // 1. Fetch the incoming new assigned operator profile details
-            const newOperator = await Operator.findById(data.targetOperatorId)
-              .select('firstName lastName avatar')
-              .lean()
-            if (!newOperator) return
-
-            // 2. Update the session assignment on the database layer
-            const updatedSession = await ChatSession.findByIdAndUpdate(
-              data.sessionId,
-              {
-                assignedOperatorId: data.targetOperatorId,
-                status: 'active',
-              },
-              { new: true },
-            )
-
-            if (!updatedSession) return
-
-            const room = `session:${data.sessionId}`
-            const transferText =
-              `Chat was transferred to ${newOperator.firstName} ${newOperator.lastName || ''}`.trim()
-
-            // 🎯 3. SAVE THE SYSTEM NOTICE PERMANENTLY IN THE DATABASE
-            // Adjust model name "Message" matching your actual database schema
-            const systemMessage = await Message.create({
-              sessionId: data.sessionId,
-              senderType: 'system',
-              senderId: 'system',
-              messageText: transferText,
-              messageType: 'text',
-              status: 'seen',
-              createdAt: new Date(),
-            })
-
-            // 4. Broadcast the actual message object to everyone in the room (including the visitor)
-            this.io.to(room).emit('new_message', systemMessage)
-
-            // 5. Tell the new operator's specific layout stream to join the session
-            this.io
-              .to(`operator:${data.targetOperatorId}`)
-              .emit('chat_assigned', {
-                sessionId: data.sessionId,
-                propertyId: updatedSession.propertyId,
-                operatorId: data.targetOperatorId,
-                operator: newOperator,
+                  return {
+                    ...message,
+                    messageText: '',
+                  }
+                }
               })
 
-            // 6. Notify the property dashboards across all operators to dynamically reposition sidebars
-            this.io
-              .to(`property:dashboard:${updatedSession.propertyId.toString()}`)
-              .emit('dashboard_refresh_request')
+              socket.emit('chat_history', messages)
+
+
+
+
+              if (session.unreadOperator > 0) {
+                await markAllSeenInSession(
+                  data.sessionId,
+                  'visitor',
+                  data.operatorId,
+                )
+                this.io.to(room).emit('messages_seen', {
+                  sessionId: data.sessionId,
+                  reader: 'operator',
+                })
+
+                this.io
+                  .to(`property:dashboard:${session.propertyId}`)
+                  .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
+              }
+            }
+
+            if (data.clientType === 'visitor' && session) {
+              // Let ClientChatWrapper handle triggering read status explicitly via 'mark_session_seen' when open === true.
+              await markAllDelivered(data.sessionId, 'operator')
+              await markAllDelivered(data.sessionId, 'ai')
+
+              this.io.to(room).emit('messages_delivered_bulk', {
+                sessionId: data.sessionId,
+                senderType: 'operator',
+              })
+            }
+
+            socket.to(room).emit('presence_notification', {
+              message: `${data.clientType} joined chat`,
+            })
+
+            logger.info(`💬 Joined session ${data.sessionId}`)
           } catch (error) {
-            logger.error(
-              error,
-              'Failed to complete chat session transfer execution routing',
-            )
+            logger.error(error, 'join_chat_session failed')
           }
-        },
-      )
-      /* -------------------------------------------------- */
-      /* DISCONNECT STATE                                   */
-      /* -------------------------------------------------- */
-      socket.on('disconnect', async () => {
-        try {
-          const operatorId = socket.data.operatorId
-          const visitorId = socket.data.visitorId
+        })
 
-          if (operatorId) {
-            await PresenceService.setOperatorOffline(operatorId)
+        /*
+        ****************************************
+        * TYPING EVENT PIPELINE
+        ****************************************
+        */
+        socket.on('typing', (data: TypingPayload) => {
+          try {
+            if (!data.sessionId) return
+
+            const calculatedActor =
+              data.senderName?.toLowerCase() === 'visitor'
+                ? 'visitor'
+                : 'operator'
+
+            socket.to(`session:${data.sessionId}`).emit('user_typing', {
+              sessionId: data.sessionId,
+              senderName: data.senderName,
+              isTyping: data.isTyping,
+              actor: calculatedActor,
+            })
+          } catch (error) {
+            logger.error(error, 'Real-time typing event routing pipeline crashed')
           }
+        })
 
-          if (visitorId) {
-            await PresenceService.removeVisitor(visitorId)
+        /* -------------------------------------------------- */
+        /* SEND MESSAGE                                       */
+        /* -------------------------------------------------- */
+        socket.on('send_message', async (data: SendMessagePayload) => {
+          try {
+            // MessagePipeline already handles global room emissions and dashboard sync updates internally!
+            const message = await MessagePipeline.processMessage(data)
+
+            // Only send the lightweight operational acknowledgment back to the source socket
+            socket.emit('message_ack', {
+              messageId: message._id,
+              sessionId: data.sessionId,
+            })
+          } catch (error) {
+            logger.error(error, 'Socket message processing failed')
+            socket.emit('message_error', { message: 'Message processing failed' })
           }
+        })
 
-          logger.info(`❌ Disconnected: ${socket.id}`)
-        } catch (error) {
-          logger.error(error, 'Disconnect failed')
-        }
+        /*
+        ****************************************
+        * 🎯 NEW: MESSAGE DELIVERED RECEIPT LISTENER
+        ****************************************
+        */
+        socket.on(
+          'message_delivered',
+          async (data: { messageId: string; sessionId: string }) => {
+            try {
+              if (!data.messageId) return
+              const updatedMessage = await markDelivered(data.messageId)
+
+              if (updatedMessage) {
+                this.io
+                  .to(`session:${data.sessionId}`)
+                  .emit('message_status_updated', {
+                    messageId: data.messageId,
+                    sessionId: data.sessionId,
+                    status: 'delivered',
+                  })
+              }
+            } catch (error) {
+              logger.error(error, 'Error setting delivery confirmation state')
+            }
+          },
+        )
+
+        /*
+        ****************************************
+        * 🎯 NEW: BULK WINDOW SEEN RECEIPT LISTENER
+        ****************************************
+        */
+        socket.on(
+          'mark_session_seen',
+          async (data: {
+            sessionId: string
+            clientType: 'visitor' | 'operator'
+            operatorId?: string
+          }) => {
+            try {
+              if (!data.sessionId) return
+
+              // If operator views it, visitor's messages are read. If visitor views it, operator/ai messages are read.
+              const targetSenderType =
+                data.clientType === 'operator' ? 'visitor' : 'operator'
+
+              await markAllSeenInSession(
+                data.sessionId,
+                targetSenderType,
+                data.operatorId,
+              )
+              if (targetSenderType === 'operator') {
+                await markAllSeenInSession(data.sessionId, 'ai', data.operatorId)
+              }
+
+              const session = await ChatSession.findById(data.sessionId).lean()
+
+              // Broadcast state shift down to open windows
+              this.io.to(`session:${data.sessionId}`).emit('messages_seen', {
+                sessionId: data.sessionId,
+                reader: data.clientType,
+              })
+
+              // Sync dashboard sidebar unread badge removals
+              if (session && data.clientType === 'operator') {
+                this.io
+                  .to(`property:dashboard:${session.propertyId.toString()}`)
+                  .emit('dashboard_unread_cleared', {
+                    sessionId: data.sessionId,
+                  })
+              }
+            } catch (error) {
+              logger.error(
+                error,
+                'Failed to map bulk session seen confirmation loops',
+              )
+            }
+          },
+        )
+
+        /*
+        ****************************************
+        * JOIN NOTIFICATIONS
+        ****************************************
+        */
+        socket.on('join_notifications', ({ propertyId }: NotificationPayload) => {
+          if (!propertyId) return
+
+          socket.join(`property:dashboard:${propertyId}`)
+          logger.info(`🔔 Notification room joined ${propertyId}`)
+        })
+
+        /*
+        ****************************************
+        * HEARTBEAT
+        ****************************************
+        */
+        socket.on('ping_server', () => {
+          socket.emit('pong_server')
+        })
+
+        /*
+        ****************************************
+        * 🎯 NEW: CHAT TRANSFER AGENT PIPELINE
+        ****************************************
+        */
+        socket.on(
+          'transfer_chat_session',
+          async (data: { sessionId: string; targetOperatorId: string }) => {
+            try {
+              if (!data.sessionId || !data.targetOperatorId) return
+
+              // 1. Fetch the incoming new assigned operator profile details
+              const newOperator = await Operator.findById(data.targetOperatorId)
+                .select('firstName lastName avatar')
+                .lean()
+              if (!newOperator) return
+
+              // 2. Update the session assignment on the database layer
+              const updatedSession = await ChatSession.findByIdAndUpdate(
+                data.sessionId,
+                {
+                  assignedOperatorId: data.targetOperatorId,
+                  status: 'active',
+                },
+                { new: true },
+              )
+
+              if (!updatedSession) return
+
+              // const room = `session:${data.sessionId}`
+              // const transferText =
+              //   `Chat was transferred to ${newOperator.firstName} ${newOperator.lastName || ''}`.trim()
+
+              // // 🎯 3. SAVE THE SYSTEM NOTICE PERMANENTLY IN THE DATABASE
+              // // Adjust model name "Message" matching your actual database schema
+              // const systemMessage = await Message.create({
+              //   sessionId: data.sessionId,
+              //   senderType: 'system',
+              //   senderId: 'system',
+              //   messageText: transferText,
+              //   messageType: 'text',
+              //   status: 'seen',
+              //   createdAt: new Date(),
+              // })
+
+              // // 4. Broadcast the actual message object to everyone in the room (including the visitor)
+              // this.io.to(room).emit('new_message', systemMessage)
+
+
+
+              const room = `session:${data.sessionId}`
+
+              const transferText =
+                `Chat was transferred to ${newOperator.firstName} ${newOperator.lastName || ''}`.trim()
+
+              // Save the encrypted system message
+              const systemMessage = await createSystemMessage(
+                data.sessionId,
+                transferText,
+              )
+
+              // Broadcast a decrypted payload to connected clients
+              const systemPayload = {
+                ...(systemMessage.toObject
+                  ? systemMessage.toObject()
+                  : { ...systemMessage }),
+                messageText: transferText,
+              }
+
+              this.io.to(room).emit('new_message', systemPayload)
+
+              // 5. Tell the new operator's specific layout stream to join the session
+              this.io
+                .to(`operator:${data.targetOperatorId}`)
+                .emit('chat_assigned', {
+                  sessionId: data.sessionId,
+                  propertyId: updatedSession.propertyId,
+                  operatorId: data.targetOperatorId,
+                  operator: newOperator,
+                })
+
+              // 6. Notify the property dashboards across all operators to dynamically reposition sidebars
+              this.io
+                .to(`property:dashboard:${updatedSession.propertyId.toString()}`)
+                .emit('dashboard_refresh_request')
+            } catch (error) {
+              logger.error(
+                error,
+                'Failed to complete chat session transfer execution routing',
+              )
+            }
+          },
+        )
+        /* -------------------------------------------------- */
+        /* DISCONNECT STATE                                   */
+        /* -------------------------------------------------- */
+        socket.on('disconnect', async () => {
+          try {
+            const operatorId = socket.data.operatorId
+            const visitorId = socket.data.visitorId
+
+            if (operatorId) {
+              await PresenceService.setOperatorOffline(operatorId)
+            }
+
+            if (visitorId) {
+              await PresenceService.removeVisitor(visitorId)
+            }
+
+            logger.info(`❌ Disconnected: ${socket.id}`)
+          } catch (error) {
+            logger.error(error, 'Disconnect failed')
+          }
+        })
       })
-    })
-  }
+    }
 
-  public getIO(): Server {
-    return this.io
+    public getIO(): Server {
+      return this.io
+    }
   }
-}

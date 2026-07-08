@@ -20,6 +20,7 @@ import { cosineSimilarity } from './ai/ai.cosine.js'
 import { addHistory, getMemory, setMemory } from './ai/ai.memory.js'
 import KnowledgeBase from '../models/KnowledgeBase.js'
 import { footballIntents } from './ai/ai.football.js'
+import type { IMessage } from '../types/message.types.js'
 
 // ✅ Helper to get a random fallback from the responses array
 const getRandomFallback = (): string => {
@@ -28,16 +29,18 @@ const getRandomFallback = (): string => {
 }
 
 export class AIService {
-  static async generateReply(message: string, context: any[]) {
+  static async generateReply(message: string, context: Partial<IMessage>[]) {
     try {
-      /* INITIAL GREETING */
-      if (!context?.length) {
+      const firstMessage = context.at(0)
+
+      if (!firstMessage) {
         return createResponse(
           "Hello and welcome! I'm your virtual assistant. How may I assist you today?",
         )
       }
 
-      const session = await ChatSession.findById(context[0].sessionId).lean()
+      const session = await ChatSession.findById(firstMessage.sessionId).lean()
+
       if (!session) {
         return createResponse(
           "I couldn't establish your chat session properly. Let me connect you with support.",
