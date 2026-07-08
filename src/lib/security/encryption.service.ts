@@ -1,6 +1,7 @@
 // /src/lib/security/encryption.service.ts
 
 import crypto from 'crypto'
+import { ENV } from '../../config/env.js'
 
 const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 12
@@ -19,7 +20,7 @@ class EncryptionService {
   private readonly keyVersion: number
 
   constructor() {
-    const secret = process.env.MESSAGE_ENCRYPTION_KEY
+    const secret = ENV.MESSAGE_ENCRYPTION_KEY
 
     if (!secret) {
       throw new Error('MESSAGE_ENCRYPTION_KEY environment variable is missing.')
@@ -31,7 +32,7 @@ class EncryptionService {
       throw new Error('Invalid encryption key length.')
     }
 
-    this.keyVersion = Number(process.env.MESSAGE_KEY_VERSION || 1)
+    this.keyVersion = ENV.MESSAGE_KEY_VERSION
   }
 
   encrypt(plainText: string): EncryptedPayload {

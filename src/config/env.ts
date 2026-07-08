@@ -55,5 +55,8 @@ export const ENV = {
     SECRET_HEX: getCryptoSecret(),
   },
 
+  MESSAGE_ENCRYPTION_KEY: getRequiredEnv('MESSAGE_ENCRYPTION_KEY'),
+  MESSAGE_KEY_VERSION: Number(process.env.MESSAGE_KEY_VERSION || '1'),
+
   BASE_URL: process.env.BASE_URL,
 }
