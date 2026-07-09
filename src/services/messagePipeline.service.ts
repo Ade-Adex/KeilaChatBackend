@@ -171,18 +171,25 @@ export class MessagePipeline {
           const propertyDoc = await Property.findById(session.propertyId)
             .select('accountId')
             .lean()
-          const accountIdStr = propertyDoc?.accountId
-            ? propertyDoc.accountId.toString()
-            : ''
 
-          const availableOperators = await getAvailableOperators(accountIdStr)
+          const accountIdObj = propertyDoc?.accountId
+            ? new Types.ObjectId(propertyDoc.accountId.toString())
+            : null
 
-          if (
-            availableOperators &&
-            availableOperators.length > 0 &&
-            availableOperators[0]
-          ) {
-            const targetOperator = availableOperators[0]
+          let targetOperator = null
+
+          if (accountIdObj) {
+            // 🎯 FIX: Robust, cast-safe query matching your online operators exactly
+            targetOperator = await Operator.findOne({
+              accountId: accountIdObj,
+              isOnline: true,
+              status: 'active',
+            })
+              .sort({ activeChatsCount: 1 }) // Route to the least busy agent first
+              .lean()
+          }
+
+          if (targetOperator) {
             const targetOperatorId = targetOperator._id.toString()
 
             session.aiEnabled = false
@@ -262,7 +269,7 @@ export class MessagePipeline {
           }
         }
 
-       const historyMessages = (
+        const historyMessages = (
           await Message.find({ sessionId })
             .select('+encryptedMessage')
             .sort({ createdAt: -1 })
@@ -291,7 +298,6 @@ export class MessagePipeline {
             isFromAI: true,
           },
         )
-
 
         const aiPayload = aiMessage
 
