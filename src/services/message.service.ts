@@ -124,15 +124,7 @@ import { AppError } from './appError.js'
   }
 
   export async function getMessages(sessionId: string) {
-    // const messages = await Message.find({
-    //   sessionId,
-    // })
-    //   .sort({
-    //     createdAt: 1,
-    //   })
-    //   .lean()
-
-
+  
     const messages = await Message.find({
       sessionId,
     })

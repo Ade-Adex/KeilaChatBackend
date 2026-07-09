@@ -123,6 +123,16 @@ export class MessagePipeline {
       }
     }
 
+    // /* ****************************************
+    //  * STEP 3: GLOBAL ROOM BROADCAST & DASHBOARD UPDATE
+    //  **************************************** */
+    // EventService.emitToSession(sessionId, 'new_message', messagePayload)
+    // EventService.emitToProperty(propertyId, 'dashboard_message_update', {
+    //   sessionId,
+    //   message: messagePayload,
+    // })
+
+
     /* ****************************************
      * STEP 3: GLOBAL ROOM BROADCAST & DASHBOARD UPDATE
      **************************************** */
@@ -131,6 +141,18 @@ export class MessagePipeline {
       sessionId,
       message: messagePayload,
     })
+
+    // 🎯 FIX: Push live launcher updates to the minimized embed layout room immediately!
+    if (senderType === 'operator' || senderType === 'ai') {
+      const refreshedSession = await ChatSession.findById(sessionId).lean();
+      if (refreshedSession && refreshedSession.visitorId) {
+        // Emit a specific real-time count sync down to the visitor socket identifier room
+        EventService.emitToVisitor(refreshedSession.visitorId.toString(), 'unread_count_sync', {
+          sessionId,
+          unreadCount: refreshedSession.unreadVisitor || 1
+        })
+      }
+    }
 
     /* ****************************************
      * STEP 4: AI Routing & Triage
@@ -239,13 +261,8 @@ export class MessagePipeline {
             return messagePayload
           }
         }
-        
-       /*  const historyMessages = (
-          await Message.find({ sessionId })
-            .sort({ createdAt: -1 })
-            .limit(10)
-            .lean()
-        ) */  const historyMessages = (
+
+       const historyMessages = (
           await Message.find({ sessionId })
             .select('+encryptedMessage')
             .sort({ createdAt: -1 })
@@ -275,9 +292,6 @@ export class MessagePipeline {
           },
         )
 
-        // const aiPayload = aiMessage.toObject
-        //   ? aiMessage.toObject()
-        //   : { ...aiMessage }
 
         const aiPayload = aiMessage
 
