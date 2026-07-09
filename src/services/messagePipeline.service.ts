@@ -154,19 +154,26 @@ export class MessagePipeline {
       }
     }
 
-    /* ****************************************
+   /* ****************************************
      * STEP 4: AI Routing & Triage
      **************************************** */
     if (senderType === 'visitor') {
       if (session.aiEnabled && !session.assignedOperatorId) {
         const cleanText = (messageText || '').toLowerCase().trim()
+
         const isConfirmingTransfer =
           cleanText === 'yes' ||
+          cleanText === 'y' ||
+          cleanText === 'yeah' ||
+          cleanText === 'sure' ||
+          cleanText === 'ok' ||
           cleanText.includes('transfer') ||
           cleanText.includes('agent') ||
-          cleanText.includes('human')
+          cleanText.includes('human') ||
+          cleanText.includes('operator') ||
+          cleanText.includes('support')
 
-        /* --- SUB-ROUTE A: HUMAN TRANSFER REQUEST --- */
+        /* --- SUB-ROUTE A: VISITOR CONFIRMED TRANSFER (Session is in 'waiting' state) --- */
         if (session.status === 'waiting' && isConfirmingTransfer) {
           const propertyDoc = await Property.findById(session.propertyId)
             .select('accountId')
@@ -176,7 +183,6 @@ export class MessagePipeline {
             ? propertyDoc.accountId.toString()
             : ''
 
-          // 🎯 FIX: Calling the corrected service safely with the account ID string
           const availableOperators = await getAvailableOperators(accountIdStr)
 
           if (
@@ -187,6 +193,7 @@ export class MessagePipeline {
             const targetOperator = availableOperators[0]
             const targetOperatorId = targetOperator._id.toString()
 
+            // 🎯 Disable AI & Assign to human
             session.aiEnabled = false
             session.aiEscalated = true
             session.status = 'active'
@@ -199,7 +206,8 @@ export class MessagePipeline {
             )
 
             const transferText =
-              `Chat was transferred from AI to ${targetOperator.firstName || ''} ${targetOperator.lastName || ''}`.trim()
+              `Chat was transferred to ${targetOperator.firstName || 'an agent'} ${targetOperator.lastName || ''}`.trim()
+            
             const systemNotice = await createSystemMessage(
               sessionId,
               transferText,
@@ -212,8 +220,8 @@ export class MessagePipeline {
               messageText: transferText,
             }
 
+            // Emit events
             EventService.emitToSession(sessionId, 'new_message', systemPayload)
-
             EventService.emitToSession(sessionId, 'session_status_changed', {
               sessionId,
               status: 'active',
@@ -242,15 +250,20 @@ export class MessagePipeline {
                 avatar: targetOperator.avatar,
               },
             })
+            
             EventService.emitToProperty(
               propertyId,
               'dashboard_refresh_request',
               {},
             )
+
+            // 🎯 RETURN IMMEDIATELY: Do not execute AIService below!
             return messagePayload
           } else {
+            // No operators available -> Send offline message
             const fallbackReply =
-              'I am ready to transfer you, but all of our agents are offline. Please hold, and an agent will reply as soon as possible.'
+              'I am ready to transfer you, but all of our agents are currently offline. Please leave your message, and an agent will reply as soon as possible.'
+            
             const aiFallbackMsg = await sendMessage(
               sessionId,
               'ai',
@@ -260,10 +273,13 @@ export class MessagePipeline {
             )
 
             EventService.emitToSession(sessionId, 'new_message', aiFallbackMsg)
+            
+            // 🎯 RETURN IMMEDIATELY: Do not execute AIService below!
             return messagePayload
           }
         }
 
+        /* --- SUB-ROUTE B: STANDARD AI REPLY GENERATION --- */
         const historyMessages = (
           await Message.find({ sessionId })
             .select('+encryptedMessage')
@@ -277,7 +293,7 @@ export class MessagePipeline {
             : '',
         }))
 
-        // Give the text (or context indication of file) to AI evaluation
+        // Call AIService
         const aiResponse = await AIService.generateReply(
           messageText || '[Media Attachment File]',
           historyMessages,
@@ -302,6 +318,7 @@ export class MessagePipeline {
           message: aiPayload,
         })
 
+        // 🎯 IF AI flags escalation, update session status to 'waiting' for next message turn
         if (aiResponse.shouldEscalate) {
           session.status = 'waiting'
           await session.save()
@@ -312,6 +329,8 @@ export class MessagePipeline {
             {},
           )
         }
+
+        return messagePayload
       }
     }
 
