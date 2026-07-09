@@ -146,20 +146,43 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                 })
               }
 
-              // const messages = await Message.find({ sessionId: data.sessionId })
-              //   .sort({ createdAt: 1 })
-              //   .lean()
 
-              // socket.emit('chat_history', messages)
+              // const messages = (
+              //   await Message.find({
+              //     sessionId: data.sessionId,
+              //   })
+              //     .sort({
+              //       createdAt: 1,
+              //     })
+              //     .lean()
+              // ).map((message: any) => {
+              //   try {
+              //     return {
+              //       ...message,
+              //       messageText:
+              //         message.encryptedMessage &&
+              //         encryptionService.isEncrypted(message.encryptedMessage)
+              //           ? encryptionService.decrypt(message.encryptedMessage)
+              //           : '',
+              //     }
+              //   } catch (error) {
+              //     logger.error(error, 'Failed to decrypt chat history message')
+
+              //     return {
+              //       ...message,
+              //       messageText: '',
+              //     }
+              //   }
+              // })
+
 
 
               const messages = (
                 await Message.find({
                   sessionId: data.sessionId,
                 })
-                  .sort({
-                    createdAt: 1,
-                  })
+                  .select('+encryptedMessage')
+                  .sort({ createdAt: 1 })
                   .lean()
               ).map((message: any) => {
                 try {
@@ -397,27 +420,6 @@ import { encryptionService } from '../lib/security/encryption.service.js'
               )
 
               if (!updatedSession) return
-
-              // const room = `session:${data.sessionId}`
-              // const transferText =
-              //   `Chat was transferred to ${newOperator.firstName} ${newOperator.lastName || ''}`.trim()
-
-              // // 🎯 3. SAVE THE SYSTEM NOTICE PERMANENTLY IN THE DATABASE
-              // // Adjust model name "Message" matching your actual database schema
-              // const systemMessage = await Message.create({
-              //   sessionId: data.sessionId,
-              //   senderType: 'system',
-              //   senderId: 'system',
-              //   messageText: transferText,
-              //   messageType: 'text',
-              //   status: 'seen',
-              //   createdAt: new Date(),
-              // })
-
-              // // 4. Broadcast the actual message object to everyone in the room (including the visitor)
-              // this.io.to(room).emit('new_message', systemMessage)
-
-
 
               const room = `session:${data.sessionId}`
 

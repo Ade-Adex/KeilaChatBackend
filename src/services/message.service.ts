@@ -47,26 +47,6 @@ import { AppError } from './appError.js'
       }
     }
 
-    // const message = await Message.create({
-    //   sessionId,
-
-    //   senderType,
-
-    //   senderId,
-
-    //   // messageText,
-    //   messageText: messageText || '',
-
-    //   // messageType: options?.messageType ?? 'text',
-    //   messageType: calculatedType,
-
-    //   status: 'sent',
-
-    //   isFromAI: options?.isFromAI ?? false,
-
-    //   media: options?.media ?? [],
-    // })
-
         const encryptedMessage = messageText
           ? encryptionService.encrypt(messageText)
           : undefined
@@ -120,29 +100,12 @@ import { AppError } from './appError.js'
 
     return result
 
-    // return message
   }
 
   // System Message, This is what allows: John joined chat, John left chat, Conversation ended, Conversation transferred
 
   export async function createSystemMessage(sessionId: string, text: string) {
-    // return Message.create({
-    //   sessionId,
-
-    //   senderType: 'system',
-
-    //   senderId: 'system',
-
-    //   messageText: text,
-
-    //   messageType: 'system',
-
-    //   status: 'sent',
-
-    //   isFromAI: false,
-    // })
-
-
+  
     return Message.create({
       sessionId,
 
@@ -160,23 +123,20 @@ import { AppError } from './appError.js'
     })
   }
 
-  // Get Messages
-
-  // export async function getMessages(sessionId: string) {
-  //   return Message.find({
-  //     sessionId,
-  //   })
-  //     .sort({
-  //       createdAt: 1,
-  //     })
-  //     .lean()
-  // }
-
-
   export async function getMessages(sessionId: string) {
+    // const messages = await Message.find({
+    //   sessionId,
+    // })
+    //   .sort({
+    //     createdAt: 1,
+    //   })
+    //   .lean()
+
+
     const messages = await Message.find({
       sessionId,
     })
+      .select('+encryptedMessage')
       .sort({
         createdAt: 1,
       })

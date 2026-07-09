@@ -181,12 +181,6 @@ export class MessagePipeline {
               transferText,
             )
 
-            // EventService.emitToSession(
-            //   sessionId,
-            //   'new_message',
-            //   systemNotice.toObject ? systemNotice.toObject() : systemNotice,
-            // )
-
             const systemPayload = {
               ...(systemNotice.toObject
                 ? systemNotice.toObject()
@@ -245,15 +239,15 @@ export class MessagePipeline {
             return messagePayload
           }
         }
-
-        /* --- SUB-ROUTE B: STANDARD INCOMING AI EVALUATION --- */
-        // const historyMessages = await Message.find({ sessionId })
-        //   .sort({ createdAt: -1 })
-        //   .limit(10)
-        //   .lean()
-
-        const historyMessages = (
+        
+       /*  const historyMessages = (
           await Message.find({ sessionId })
+            .sort({ createdAt: -1 })
+            .limit(10)
+            .lean()
+        ) */  const historyMessages = (
+          await Message.find({ sessionId })
+            .select('+encryptedMessage')
             .sort({ createdAt: -1 })
             .limit(10)
             .lean()
