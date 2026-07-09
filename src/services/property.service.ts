@@ -72,6 +72,7 @@ export class PropertyService {
         apiKey: credentials.apiKey,
         widgetSettings: {
           aiName: data.aiName || 'AI Assistant',
+          allowVoiceRecordings: true, // 🎯 ADDED FOR INITIAL SIGNATURE MATCH
         },
 
         details: {
@@ -115,7 +116,9 @@ export class PropertyService {
       allowEmoji: property.widgetSettings?.allowEmoji ?? true,
       allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
       launcherIcon: property.widgetSettings?.launcherIcon,
-      aiName: data.aiName, // Inject updated name parameter
+      aiName: data.aiName,
+      allowVoiceRecordings:
+        property.widgetSettings?.allowVoiceRecordings ?? true, // 🎯 FIX: Added property map to satisfy type requirements!
     }
 
     property.details = {
@@ -139,7 +142,6 @@ export class PropertyService {
 
     return property
   }
-
 
   /**
    * Get Property Details

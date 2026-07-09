@@ -20,9 +20,9 @@ export interface WidgetInitializationResult {
   visitor: any | null
 
   widgetSettings: {
-    aiName?: string | undefined 
+    aiName?: string | undefined
     launcherPosition: string
-    launcherIcon?: string | undefined 
+    launcherIcon?: string | undefined
     welcomeMessage: string
     offlineMessage: string
     showAgentPhoto: boolean
@@ -30,6 +30,7 @@ export interface WidgetInitializationResult {
     allowFileUpload: boolean
     allowEmoji: boolean
     allowScreenshots: boolean
+    allowVoiceRecordings: boolean
   }
 
   isOnline: boolean
@@ -308,6 +309,8 @@ export function buildWidgetResponse(
     allowEmoji: property.widgetSettings?.allowEmoji ?? true,
 
     allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
+
+    allowVoiceRecordings: property.widgetSettings?.allowVoiceRecordings ?? true,
   }
 
   const isOnline = onlineOperators > 0 && property.settings?.onlineStatus
@@ -358,6 +361,10 @@ export function buildWidgetResponse(
         soundEnabled: widgetSettings.soundEnabled,
 
         showAgentPhoto: widgetSettings.showAgentPhoto,
+
+        aiEnabled: property.settings?.aiEnabled ?? true,
+
+        allowVoiceRecordings: widgetSettings.allowVoiceRecordings,
       },
 
       visitor: visitor

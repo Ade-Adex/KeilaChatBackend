@@ -97,6 +97,12 @@ const PropertySchema = new Schema<IProperty>(
         type: Boolean,
         default: false,
       },
+
+      allowVoiceRecordings: {
+        type: Boolean,
+        default: true,
+      },
+      
     },
     installation: {
       installedAt: Date,

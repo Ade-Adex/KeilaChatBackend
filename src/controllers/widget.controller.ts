@@ -67,32 +67,35 @@ export const verifyWidget = catchAsync(
         // 🎯 FIX: Forward the explicit widgetSettings object structure downstream
         widgetSettings: {
           aiName: property.widgetSettings?.aiName,
-          launcherPosition: property.widgetSettings?.launcherPosition ?? 'right',
-          welcomeMessage: property.widgetSettings?.welcomeMessage ?? 'Hi! How can we help you today?',
-          offlineMessage: property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
+          launcherPosition:
+            property.widgetSettings?.launcherPosition ?? 'right',
+          welcomeMessage:
+            property.widgetSettings?.welcomeMessage ??
+            'Hi! How can we help you today?',
+          offlineMessage:
+            property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
           showAgentPhoto: property.widgetSettings?.showAgentPhoto ?? true,
           soundEnabled: property.widgetSettings?.soundEnabled ?? true,
           allowFileUpload: property.widgetSettings?.allowFileUpload ?? true,
           allowEmoji: property.widgetSettings?.allowEmoji ?? true,
           allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
+          allowVoiceRecordings:
+            property.widgetSettings?.allowVoiceRecordings ?? true,
         },
 
         settings: {
-          // 🎯 SAFEGUARD: Keep fallback signature map fields on old nested layout path too
+          aiEnabled: property.settings?.aiEnabled ?? true, 
           aiName: property.widgetSettings?.aiName ?? property.settings?.aiName,
-
           welcomeMessage:
             property.widgetSettings?.welcomeMessage ??
             'Hi! How can we help you today?',
-
           offlineMessage:
             property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
-
           allowFileUpload: property.widgetSettings?.allowFileUpload ?? true,
-
           allowEmoji: property.widgetSettings?.allowEmoji ?? true,
-
           allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
+          allowVoiceRecordings:
+            property.widgetSettings?.allowVoiceRecordings ?? true, 
         },
 
         verified: true,
@@ -119,16 +122,14 @@ export const widgetStatus = catchAsync(
 
       data: {
         online: property.settings.onlineStatus,
-
         widgetId: property.widgetId,
-
         propertyName: property.name,
-
+        aiEnabled: property.settings?.aiEnabled ?? true, 
         allowFileUpload: property.widgetSettings?.allowFileUpload,
-
         allowEmoji: property.widgetSettings?.allowEmoji,
-
         allowScreenshots: property.widgetSettings?.allowScreenshots,
+        allowVoiceRecordings:
+          property.widgetSettings?.allowVoiceRecordings ?? true, 
       },
     })
   },
@@ -148,10 +149,12 @@ export const getWidgetSettings = catchAsync(
 
     const { property } = await verifyWidgetAccess(widgetId)
 
-    res.status(200).json({
-      status: 'success',
-
-      data: property.widgetSettings ?? property.settings,
-    })
+   res.status(200).json({
+     status: 'success',
+     data: {
+       ...(property.widgetSettings ?? property.settings),
+       aiEnabled: property.settings?.aiEnabled ?? true,
+     },
+   })
   },
 )

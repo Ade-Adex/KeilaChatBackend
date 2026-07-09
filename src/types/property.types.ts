@@ -42,6 +42,8 @@ export interface WidgetSettings {
   allowEmoji: boolean
 
   allowScreenshots: boolean
+
+  allowVoiceRecordings: boolean
 }
 
 export interface InstallationInfo {
