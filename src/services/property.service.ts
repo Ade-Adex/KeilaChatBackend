@@ -46,6 +46,10 @@ export class PropertyService {
       region: string
       description: string
       logoUrl: string
+      widgetSettings?: {
+        allowFileUpload?: boolean
+        allowVoiceRecordings?: boolean
+      }
     },
   ) {
     logger.info({ accountId }, 'Updating website settings')
@@ -72,7 +76,9 @@ export class PropertyService {
         apiKey: credentials.apiKey,
         widgetSettings: {
           aiName: data.aiName || 'AI Assistant',
-          allowVoiceRecordings: true, // 🎯 ADDED FOR INITIAL SIGNATURE MATCH
+          allowFileUpload: data.widgetSettings?.allowFileUpload ?? true,
+          allowVoiceRecordings:
+            data.widgetSettings?.allowVoiceRecordings ?? true,
         },
 
         details: {
@@ -112,13 +118,18 @@ export class PropertyService {
         property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
       showAgentPhoto: property.widgetSettings?.showAgentPhoto ?? true,
       soundEnabled: property.widgetSettings?.soundEnabled ?? true,
-      allowFileUpload: property.widgetSettings?.allowFileUpload ?? true,
       allowEmoji: property.widgetSettings?.allowEmoji ?? true,
       allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
       launcherIcon: property.widgetSettings?.launcherIcon,
       aiName: data.aiName,
+      allowFileUpload:
+        data.widgetSettings?.allowFileUpload ??
+        property.widgetSettings?.allowFileUpload ??
+        true,
       allowVoiceRecordings:
-        property.widgetSettings?.allowVoiceRecordings ?? true, // 🎯 FIX: Added property map to satisfy type requirements!
+        data.widgetSettings?.allowVoiceRecordings ??
+        property.widgetSettings?.allowVoiceRecordings ??
+        true,
     }
 
     property.details = {

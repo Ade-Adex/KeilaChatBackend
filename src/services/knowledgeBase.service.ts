@@ -83,8 +83,43 @@ export class KnowledgeBaseService {
       'Syncing complete knowledge base rules matrix',
     )
 
-    const normalizedFaqs =
-      data.faqs?.map((faq) => ({
+    // 1. Build out the targeted updates mapping payload context explicitly
+    const updatePayload: Record<string, any> = {
+      accountId: new mongoose.Types.ObjectId(accountId),
+    }
+
+    // 2. Safe-assign field properties only if explicitly passed from the request body
+    if (typeof data.isAiEnabled === 'boolean') {
+      updatePayload.isAiEnabled = data.isAiEnabled
+    }
+    if (typeof data.confidenceThreshold === 'number') {
+      updatePayload.confidenceThreshold = data.confidenceThreshold
+    }
+    if (typeof data.humanHandoffEnabled === 'boolean') {
+      updatePayload.humanHandoffEnabled = data.humanHandoffEnabled
+    }
+    if (data.aiMode) {
+      updatePayload.aiMode = data.aiMode
+    }
+    if (data.fallbackStrategy) {
+      updatePayload.fallbackStrategy = data.fallbackStrategy
+    }
+    if (data.fallbackMessage !== undefined) {
+      updatePayload.fallbackMessage = data.fallbackMessage
+    }
+    if (data.welcomeMessage !== undefined) {
+      updatePayload.welcomeMessage = data.welcomeMessage
+    }
+    if (data.maxResults !== undefined) {
+      updatePayload.maxResults = data.maxResults
+    }
+    if (data.categories) {
+      updatePayload.categories = data.categories
+    }
+
+    // 3. Only process and attach normalized FAQs if an array was explicitly targeted
+    if (data.faqs) {
+      updatePayload.faqs = data.faqs.map((faq) => ({
         question: faq.question,
         answer: faq.answer,
         category: faq.category ?? 'General',
@@ -97,21 +132,19 @@ export class KnowledgeBaseService {
         embeddingModel: faq.embeddingModel ?? 'Xenova/all-MiniLM-L6-v2',
         usageCount: faq.usageCount ?? 0,
         lastMatchedAt: faq.lastMatchedAt,
-      })) ?? []
+      }))
+    }
 
+    // 4. Atomically commit updates down to the database cluster storage layers
     const kb = await KnowledgeBase.findOneAndUpdate(
       {
         propertyId: new mongoose.Types.ObjectId(propertyId),
       },
       {
-        $set: {
-          accountId: new mongoose.Types.ObjectId(accountId),
-          ...data,
-          faqs: normalizedFaqs,
-        },
+        $set: updatePayload,
       },
       {
-       returnDocument: 'after',
+        returnDocument: 'after',
         upsert: true,
       },
     )
