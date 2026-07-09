@@ -1,5 +1,4 @@
 // /src/controllers/auth.controller.ts
-
 import type { Request, Response } from 'express'
 import { AuthService } from '../services/auth.service.js'
 import { generateTokenPair } from '../utils/auth/tokens.js'
@@ -7,6 +6,10 @@ import { verifyJwt } from '../utils/auth/jwt.js'
 import { SessionService } from '../services/auth-session.service.js'
 import Operator from '../models/Operator.js'
 import mongoose from 'mongoose'
+
+// 🎯 FIX: Import the update presence service logic and event broker layer
+import { updateOperatorPresence } from '../services/operator.service.js'
+import { EventService } from '../services/event.service.js'
 
 /**
  * HELPER: set auth cookies
@@ -43,7 +46,6 @@ export const registerTenant = async (req: Request, res: Response) => {
     password,
   })
 
-  // 🔐 SET COOKIES HERE
   setAuthCookies(res, result.tokens)
 
   return res.status(201).json({
@@ -78,6 +80,15 @@ export const loginOperator = async (req: Request, res: Response) => {
       role: operator.role,
     })
   }
+
+  // 🎯 FIX: Automatically toggle the operator status fields online on successful login credentials verification
+  await Operator.findByIdAndUpdate(operator._id, {
+    $set: {
+      isOnline: true,
+      availabilityStatus: 'online',
+      lastSeen: new Date(),
+    },
+  })
 
   setAuthCookies(res, tokens, rememberMe)
 
@@ -153,69 +164,6 @@ export const resetPassword = async (req: Request, res: Response) => {
   }
 }
 
-/**
- * REFRESH TOKEN (ROTATION SYSTEM)
- */
-// export const refreshToken = async (req: Request, res: Response) => {
-//   const refreshToken = req.cookies?.refresh_token
-
-//   if (!refreshToken) {
-//     return res.status(401).json({
-//       message: 'Refresh token missing',
-//     })
-//   }
-
-//   const decoded = verifyJwt(refreshToken)
-
-//   if (decoded.type !== 'refresh' || !decoded.userId) {
-//     return res.status(403).json({ message: 'Invalid refresh token' })
-//   }
-
-//   const session = await SessionService.getSession(decoded.jti!)
-
-//   if (!session) {
-//     return res.status(403).json({ message: 'Session expired or invalid' })
-//   }
-
-//   const operator = await Operator.findById(decoded.userId)
-
-//   if (!operator) {
-//     return res.status(404).json({ message: 'User not found' })
-//   }
-
-//   const newTokens = generateTokenPair({
-//     userId: operator._id.toString(),
-//     accountId: operator.accountId.toString(),
-//     role: operator.role,
-//   })
-
-//   await SessionService.deleteSession(decoded.jti!)
-
-//   const newDecoded = verifyJwt(newTokens.refreshToken)
-
-//   if (newDecoded.type === 'refresh') {
-//     await SessionService.storeSession(newDecoded.jti!, {
-//       userId: operator._id.toString(),
-//       accountId: operator.accountId.toString(),
-//       role: operator.role,
-//     })
-//   }
-
-//   // 🔐 UPDATE COOKIES
-//   setAuthCookies(res, newTokens)
-
-//   return res.status(200).json({
-//     success: true,
-//     data: {
-//       message: 'Token refreshed',
-//     },
-//   })
-// }
-
-
-// /src/controllers/auth.controller.ts
-
-// ... update the refreshToken controller method to look like this:
 export const refreshToken = async (req: Request, res: Response) => {
   const refreshToken = req.cookies?.refresh_token
 
@@ -234,20 +182,20 @@ export const refreshToken = async (req: Request, res: Response) => {
   const session = await SessionService.getSession(decoded.jti!)
 
   if (!session) {
+    // 🎯 FIX: If token sequence context checks reveal an expired session, force database state offline
+    await Operator.findByIdAndUpdate(decoded.userId, {
+      $set: { isOnline: false, availabilityStatus: 'offline' },
+    })
     return res.status(403).json({ message: 'Session expired or invalid' })
   }
 
-  // Populate data using Lean to map cleanly into UI elements
   const operator = await Operator.findById(decoded.userId).lean()
 
   if (!operator) {
     return res.status(404).json({ message: 'User not found' })
   }
 
-  // Dynamically resolve account reference link mapping 
   const accountId = operator.accountId.toString()
-  
-  // 🎯 Fetch full account structural references to hydrate frontend UI properties
   const account = await mongoose.model('Account').findById(accountId).lean()
 
   const newTokens = generateTokenPair({
@@ -268,10 +216,8 @@ export const refreshToken = async (req: Request, res: Response) => {
     })
   }
 
-  // 🔐 UPDATE COOKIES
   setAuthCookies(res, newTokens)
 
-  // 🎯 FIX: Return full context data metrics so frontend can hydrate Zustand caches on boot
   return res.status(200).json({
     success: true,
     data: {
@@ -292,8 +238,34 @@ export const logoutOperator = async (req: Request, res: Response) => {
     if (refreshToken) {
       const decoded = verifyJwt(refreshToken)
 
-      if (decoded.type === 'refresh' && decoded.jti) {
-        await SessionService.deleteSession(decoded.jti)
+      if (decoded.type === 'refresh') {
+        if (decoded.jti) {
+          await SessionService.deleteSession(decoded.jti)
+        }
+
+        if (decoded.userId) {
+          // 🎯 FIX: Revert operator parameters to complete unattached offline states
+          const updatedOp = await Operator.findByIdAndUpdate(
+            decoded.userId,
+            {
+              $set: {
+                isOnline: false,
+                availabilityStatus: 'offline',
+                lastSeen: new Date(),
+              },
+            },
+            { returnDocument: 'after' },
+          ).lean()
+
+          // Broadcast state changes down across properties so dashboard listings match
+          if (updatedOp && updatedOp.accountId) {
+            EventService.emitToProperty(
+              updatedOp.accountId.toString(),
+              'dashboard_refresh_request',
+              { operatorId: decoded.userId, status: 'offline' },
+            )
+          }
+        }
       }
     }
 
