@@ -172,24 +172,19 @@ export class MessagePipeline {
             .select('accountId')
             .lean()
 
-          const accountIdObj = propertyDoc?.accountId
-            ? new Types.ObjectId(propertyDoc.accountId.toString())
-            : null
+          const accountIdStr = propertyDoc?.accountId
+            ? propertyDoc.accountId.toString()
+            : ''
 
-          let targetOperator = null
+          // 🎯 FIX: Calling the corrected service safely with the account ID string
+          const availableOperators = await getAvailableOperators(accountIdStr)
 
-          if (accountIdObj) {
-            // 🎯 FIX: Robust, cast-safe query matching your online operators exactly
-            targetOperator = await Operator.findOne({
-              accountId: accountIdObj,
-              isOnline: true,
-              status: 'active',
-            })
-              .sort({ activeChatsCount: 1 }) // Route to the least busy agent first
-              .lean()
-          }
-
-          if (targetOperator) {
+          if (
+            availableOperators &&
+            availableOperators.length > 0 &&
+            availableOperators[0]
+          ) {
+            const targetOperator = availableOperators[0]
             const targetOperatorId = targetOperator._id.toString()
 
             session.aiEnabled = false

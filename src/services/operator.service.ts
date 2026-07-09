@@ -14,24 +14,24 @@ import { Types } from 'mongoose'
 
 export async function getOperatorsByAccount(accountId: string) {
   return Operator.find({
-    accountId,
+    accountId: new Types.ObjectId(accountId),
   })
     .select('-passwordHash -inviteToken')
     .sort({
       createdAt: -1,
     })
 }
+
 export async function inviteOperatorToAccount(
   accountId: string,
   email: string,
   role: 'admin' | 'supervisor' | 'agent',
 ) {
   const normalizedEmail = email.toLowerCase().trim()
-
   const BaseURL = ENV.BASE_URL || ''
 
   const existingOperator = await Operator.findOne({
-    accountId,
+    accountId: new Types.ObjectId(accountId),
     email: normalizedEmail,
   })
 
@@ -40,7 +40,6 @@ export async function inviteOperatorToAccount(
   }
 
   const account = await Account.findById(accountId)
-
   if (!account) {
     throw new AppError('Account not found.', 404)
   }
@@ -48,7 +47,7 @@ export async function inviteOperatorToAccount(
   const inviteToken = generateInvitationToken()
 
   await Operator.create({
-    accountId,
+    accountId: new Types.ObjectId(accountId),
     email: normalizedEmail,
     role,
     status: 'invited',
@@ -71,16 +70,20 @@ export async function inviteOperatorToAccount(
 /**
  * Queries the database for all online and active operator agents within a specific account.
  */
-export async function getActiveOperatorsService(accountId: string | Types.ObjectId) {
+export async function getActiveOperatorsService(
+  accountId: string | Types.ObjectId,
+) {
   const queryFilter = {
-    accountId: new Types.ObjectId(accountId), 
+    accountId: new Types.ObjectId(accountId),
     status: 'active' as const,
     isOnline: true,
-    availabilityStatus: 'online' as const
+    availabilityStatus: 'online' as const,
   }
 
   const operators = await Operator.find(queryFilter)
-    .select('firstName lastName avatar email status isOnline availabilityStatus')
+    .select(
+      'firstName lastName avatar email status isOnline availabilityStatus',
+    )
     .sort({ firstName: 1 })
     .lean()
 
@@ -123,12 +126,10 @@ export async function acceptOperatorInvite(
   operator.firstName = firstName.trim()
   operator.lastName = lastName.trim()
   operator.passwordHash = passwordHash
-
   operator.status = 'active'
   operator.inviteToken = null
 
   await operator.save()
-
   return operator
 }
 
@@ -142,7 +143,7 @@ export async function getOperatorActiveSessions(operatorId: string) {
     .sort({
       updatedAt: -1,
     })
-    .populate('visitorId', 'name') 
+    .populate('visitorId', 'name')
     .lean()
 }
 
@@ -151,23 +152,25 @@ export async function updateOperatorPresence(
   status: 'online' | 'offline' | 'away',
 ) {
   const operator = await Operator.findById(operatorId)
-
   if (!operator) {
     throw new AppError('Operator not found', 404)
   }
 
   operator.isOnline = status === 'online'
-
   operator.lastSeen = new Date()
 
   await operator.save()
-
   return operator
 }
 
-export async function getAvailableOperators(accountId: string) {
+/* -------------------------------------------------------------------------- */
+/* 🎯 FIXED: Cast accountId to complete explicit ObjectId format context      */
+/* -------------------------------------------------------------------------- */
+export async function getAvailableOperators(
+  accountId: string | Types.ObjectId,
+) {
   return Operator.find({
-    accountId,
+    accountId: new Types.ObjectId(accountId),
 
     status: 'active',
 
