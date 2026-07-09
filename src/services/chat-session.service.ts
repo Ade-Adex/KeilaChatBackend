@@ -61,7 +61,7 @@ export async function findOrCreateVisitor(payload: VisitorPayload) {
       },
     },
     {
-      new: true,
+      returnDocument: 'after',
       upsert: true,
       setDefaultsOnInsert: true,
     },
@@ -329,7 +329,7 @@ export async function updateTypingStatus(
       [type === 'visitor' ? 'visitorTyping' : 'operatorTyping']: value,
     },
     {
-      new: true,
+      returnDocument: 'after',
     },
   )
 }
@@ -353,7 +353,7 @@ export async function addInternalNote(
       },
     },
     {
-      new: true,
+      returnDocument: 'after',
     },
   )
 }
@@ -510,7 +510,7 @@ export async function updateTyping(
   const update =
     actor === 'visitor' ? { visitorTyping: typing } : { operatorTyping: typing }
 
-  return ChatSession.findByIdAndUpdate(sessionId, update, { new: true })
+  return ChatSession.findByIdAndUpdate(sessionId, update, {returnDocument: 'after' })
 }
 
 // Session rating
@@ -530,7 +530,7 @@ export async function rateSession(
       },
     },
     {
-      new: true,
+     returnDocument: 'after',
     },
   )
 }

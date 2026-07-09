@@ -9,14 +9,12 @@ const ChatSessionSchema = new Schema<IChatSession>(
       type: Schema.Types.ObjectId,
       ref: 'Property',
       required: true,
-      index: true,
     },
 
     visitorId: {
       type: Schema.Types.ObjectId,
       ref: 'Visitor',
       required: true,
-      index: true,
     },
 
     assignedOperatorId: {

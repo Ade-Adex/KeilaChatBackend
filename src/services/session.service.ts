@@ -191,7 +191,7 @@ export async function closeChatSession(sessionId: string, closedBy: string) {
       status: 'closed',
       closedAt: new Date(),
     },
-    { new: true },
+    { returnDocument: 'after' },
   )
 
   if (!session) {

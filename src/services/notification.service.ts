@@ -100,7 +100,7 @@ export class NotificationService {
         readAt: new Date(),
       },
       {
-        new: true,
+       returnDocument: 'after',
       },
     )
   }
@@ -117,7 +117,7 @@ export class NotificationService {
         dismissed: true,
       },
       {
-        new: true,
+       returnDocument: 'after',
       },
     )
   }

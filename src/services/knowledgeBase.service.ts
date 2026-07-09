@@ -111,7 +111,7 @@ export class KnowledgeBaseService {
         },
       },
       {
-        new: true,
+       returnDocument: 'after',
         upsert: true,
       },
     )

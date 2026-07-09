@@ -23,7 +23,7 @@ export class VisitorService {
         name: name.trim(),
         email: email.trim().toLowerCase(),
       },
-      { new: true, runValidators: true },
+      {returnDocument: 'after', runValidators: true },
     )
 
     if (!updatedVisitor) {

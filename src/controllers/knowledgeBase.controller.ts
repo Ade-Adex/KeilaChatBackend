@@ -261,7 +261,9 @@ export const deleteCrawledSource = catchAsync(
     const kb = await KnowledgeBase.findOneAndUpdate(
       { propertyId },
       { $pull: { crawledSources: { url } } },
-      { new: true },
+      {
+        returnDocument: 'after',
+      },
     )
 
     if (!kb) {

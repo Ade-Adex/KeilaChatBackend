@@ -185,7 +185,7 @@ export async function createOrUpdateVisitor(
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
         lean: true,
       },
     )

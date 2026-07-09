@@ -159,7 +159,7 @@ import { AppError } from './appError.js'
         status: 'delivered',
       },
       {
-        new: true,
+       returnDocument: 'after',
       },
     )
   }

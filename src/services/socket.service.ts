@@ -416,7 +416,7 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                   assignedOperatorId: data.targetOperatorId,
                   status: 'active',
                 },
-                { new: true },
+                { returnDocument: 'after' },
               )
 
               if (!updatedSession) return
