@@ -132,7 +132,6 @@ export class MessagePipeline {
     //   message: messagePayload,
     // })
 
-
     /* ****************************************
      * STEP 3: GLOBAL ROOM BROADCAST & DASHBOARD UPDATE
      **************************************** */
@@ -144,37 +143,51 @@ export class MessagePipeline {
 
     // 🎯 FIX: Push live launcher updates to the minimized embed layout room immediately!
     if (senderType === 'operator' || senderType === 'ai') {
-      const refreshedSession = await ChatSession.findById(sessionId).lean();
+      const refreshedSession = await ChatSession.findById(sessionId).lean()
       if (refreshedSession && refreshedSession.visitorId) {
         // Emit a specific real-time count sync down to the visitor socket identifier room
-        EventService.emitToVisitor(refreshedSession.visitorId.toString(), 'unread_count_sync', {
-          sessionId,
-          unreadCount: refreshedSession.unreadVisitor || 1
-        })
+        EventService.emitToVisitor(
+          refreshedSession.visitorId.toString(),
+          'unread_count_sync',
+          {
+            sessionId,
+            unreadCount: refreshedSession.unreadVisitor || 1,
+          },
+        )
       }
     }
 
-   /* ****************************************
+    /* ****************************************
      * STEP 4: AI Routing & Triage
      **************************************** */
     if (senderType === 'visitor') {
       if (session.aiEnabled && !session.assignedOperatorId) {
         const cleanText = (messageText || '').toLowerCase().trim()
 
-        const isConfirmingTransfer =
-          cleanText === 'yes' ||
-          cleanText === 'y' ||
-          cleanText === 'yeah' ||
-          cleanText === 'sure' ||
-          cleanText === 'ok' ||
+        // 1️⃣ Check for explicit human commands that should ALWAYS trigger a transfer
+        const isExplicitCommand =
           cleanText.includes('transfer') ||
           cleanText.includes('agent') ||
           cleanText.includes('human') ||
           cleanText.includes('operator') ||
-          cleanText.includes('support')
+          cleanText.includes('speak to someone')
 
-        /* --- SUB-ROUTE A: VISITOR CONFIRMED TRANSFER (Session is in 'waiting' state) --- */
-        if (session.status === 'waiting' && isConfirmingTransfer) {
+        // 2️⃣ Check for casual confirmations (only valid if AI just prompted them via 'waiting' status)
+        const isCasualConfirmation =
+          cleanText === 'yes' ||
+          cleanText === 'y' ||
+          cleanText === 'ok' ||
+          cleanText === 'okay' ||
+          cleanText === 'yeah' ||
+          cleanText === 'sure'
+
+        // 🎯 Trigger transfer ONLY if it's an explicit command OR a confirmation to an active waiting prompt
+        const shouldTriggerTransfer =
+          isExplicitCommand ||
+          (session.status === 'waiting' && isCasualConfirmation)
+
+        /* --- SUB-ROUTE A: HUMAN TRANSFER REQUEST --- */
+        if (shouldTriggerTransfer) {
           const propertyDoc = await Property.findById(session.propertyId)
             .select('accountId')
             .lean()
@@ -190,10 +203,10 @@ export class MessagePipeline {
             availableOperators.length > 0 &&
             availableOperators[0]
           ) {
+            // --- SUCCESS: OPERATOR IS ONLINE AND AVAILABLE ---
             const targetOperator = availableOperators[0]
             const targetOperatorId = targetOperator._id.toString()
 
-            // 🎯 Disable AI & Assign to human
             session.aiEnabled = false
             session.aiEscalated = true
             session.status = 'active'
@@ -206,8 +219,7 @@ export class MessagePipeline {
             )
 
             const transferText =
-              `Chat was transferred to ${targetOperator.firstName || 'an agent'} ${targetOperator.lastName || ''}`.trim()
-            
+              `Chat was transferred from AI to ${targetOperator.firstName || ''} ${targetOperator.lastName || ''}`.trim()
             const systemNotice = await createSystemMessage(
               sessionId,
               transferText,
@@ -220,7 +232,6 @@ export class MessagePipeline {
               messageText: transferText,
             }
 
-            // Emit events
             EventService.emitToSession(sessionId, 'new_message', systemPayload)
             EventService.emitToSession(sessionId, 'session_status_changed', {
               sessionId,
@@ -250,20 +261,25 @@ export class MessagePipeline {
                 avatar: targetOperator.avatar,
               },
             })
-            
             EventService.emitToProperty(
               propertyId,
               'dashboard_refresh_request',
               {},
             )
 
-            // 🎯 RETURN IMMEDIATELY: Do not execute AIService below!
             return messagePayload
           } else {
-            // No operators available -> Send offline message
+            // --- FALLBACK: NO OPERATORS AVAILABLE -> ROUTE TO UNASSIGNED QUEUE ---
+            session.aiEnabled = false // Turn off AI so operators can claim it cleanly
+            session.aiEscalated = true
+            session.status = 'queued' // Place into unassigned list
+            await session.save()
+
+            // Route into the systematic backend queuing mechanism
+            await QueueService.addToQueue(propertyId, sessionId)
+
             const fallbackReply =
-              'I am ready to transfer you, but all of our agents are currently offline. Please leave your message, and an agent will reply as soon as possible.'
-            
+              'I am ready to transfer you, but all of our agents are offline. Please hold, and an agent will reply as soon as possible.'
             const aiFallbackMsg = await sendMessage(
               sessionId,
               'ai',
@@ -273,13 +289,22 @@ export class MessagePipeline {
             )
 
             EventService.emitToSession(sessionId, 'new_message', aiFallbackMsg)
-            
-            // 🎯 RETURN IMMEDIATELY: Do not execute AIService below!
+
+            // Fire websocket alerts so agent dashboards update the 'Queue' tab instantly
+            EventService.emitToProperty(propertyId, 'dashboard_chat_queued', {
+              sessionId,
+            })
+            EventService.emitToProperty(
+              propertyId,
+              'dashboard_refresh_request',
+              {},
+            )
+
             return messagePayload
           }
         }
 
-        /* --- SUB-ROUTE B: STANDARD AI REPLY GENERATION --- */
+        // --- STANDARD AI PROCESSING (If no transfer conditions met) ---
         const historyMessages = (
           await Message.find({ sessionId })
             .select('+encryptedMessage')
@@ -293,7 +318,6 @@ export class MessagePipeline {
             : '',
         }))
 
-        // Call AIService
         const aiResponse = await AIService.generateReply(
           messageText || '[Media Attachment File]',
           historyMessages,
@@ -310,15 +334,12 @@ export class MessagePipeline {
           },
         )
 
-        const aiPayload = aiMessage
-
-        EventService.emitToSession(sessionId, 'new_message', aiPayload)
+        EventService.emitToSession(sessionId, 'new_message', aiMessage)
         EventService.emitToProperty(propertyId, 'dashboard_message_update', {
           sessionId,
-          message: aiPayload,
+          message: aiMessage,
         })
 
-        // 🎯 IF AI flags escalation, update session status to 'waiting' for next message turn
         if (aiResponse.shouldEscalate) {
           session.status = 'waiting'
           await session.save()
@@ -333,7 +354,6 @@ export class MessagePipeline {
         return messagePayload
       }
     }
-
     /* ****************************************
      * STEP 5: Live Auto-assignment Fallback Checks
      **************************************** */
