@@ -1,7 +1,5 @@
 // /src/services/ai.service.ts
 
-// /src/services/ai.service.ts
-
 import ChatSession from '../models/ChatSession.js'
 import logger from '../bootstrap/logger.js'
 import { AppError } from './appError.js'
@@ -22,7 +20,6 @@ import KnowledgeBase from '../models/KnowledgeBase.js'
 import { footballIntents } from './ai/ai.football.js'
 import type { IMessage } from '../types/message.types.js'
 
-// ✅ Helper to get a random fallback from the responses array
 const getRandomFallback = (): string => {
   const index = Math.floor(Math.random() * fallbackResponses.length)
   return fallbackResponses[index]!
@@ -98,8 +95,9 @@ export class AIService {
       /* EMOTION DETECTION */
       if (angryWords.some((word) => cleanInput.includes(word))) {
         setMemory(sessionId, { lastEmotion: 'angry' })
+        // 🎯 FIX: Explicitly append confirmation request phrase
         return createResponse(
-          "I'm sorry this has been frustrating. I'd be happy to connect you with a support specialist.",
+          "I'm sorry this has been frustrating. Would you like me to connect you with a live support specialist right now?",
           1,
           true,
         )
@@ -112,13 +110,19 @@ export class AIService {
         )
       }
 
-      /* HUMAN ESCALATION */
+      /* HUMAN ESCALATION KEYWORDS */
       if (humanWords.some((word) => cleanInput.includes(word))) {
-        return createResponse(randomResponse(escalationResponses), 1, true)
+        // 🎯 FIX: Enforce that escalation intent responses ask a clean confirmation question
+        const baseEscalationReply = randomResponse(escalationResponses)
+        return createResponse(
+          `${baseEscalationReply}\n\nWould you like me to transfer you to an agent? Please reply with "Yes" to confirm.`,
+          1,
+          true,
+        )
       }
 
       /* ========================================================================== */
-      /* 🎯 HYBRID KNOWLEDGE RETRIEVAL (FAQ + CRAWLED WEB CONTENT)                  */
+      /* 🎯 HYBRID KNOWLEDGE RETRIEVAL                                              */
       /* ========================================================================== */
       const settings = await KnowledgeBaseService.getKnowledgeBase(
         '',
@@ -145,7 +149,6 @@ export class AIService {
       const queryEmbedding: number[] = await createEmbedding(cleanInput)
 
       if (knowledge && knowledge.length > 0) {
-        /* RERANKING FAQ MATCHES */
         const ranked = await Promise.all(
           knowledge.map(async (item: any) => {
             if (!Array.isArray(item.embedding) || !item.embedding.length) {
@@ -230,7 +233,6 @@ export class AIService {
         webFallback?.confidenceScore ?? 0,
       )
 
-      // ✅ Replaced the static selection with your newly integrated unique function call
       const activeFallbackPhrase = getRandomFallback()
 
       return createResponse(

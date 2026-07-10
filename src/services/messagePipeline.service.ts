@@ -165,7 +165,7 @@ export class MessagePipeline {
       if (session.aiEnabled && !session.assignedOperatorId) {
         const cleanText = (messageText || '').toLowerCase().trim()
 
-        // 1️⃣ Check for explicit human commands that should ALWAYS trigger a transfer
+        // 1️⃣ Explicit commands always trigger a transfer immediately
         const isExplicitCommand =
           cleanText.includes('transfer') ||
           cleanText.includes('agent') ||
@@ -173,7 +173,7 @@ export class MessagePipeline {
           cleanText.includes('operator') ||
           cleanText.includes('speak to someone')
 
-        // 2️⃣ Check for casual confirmations (only valid if AI just prompted them via 'waiting' status)
+        // 2️⃣ Casual confirmation tokens
         const isCasualConfirmation =
           cleanText === 'yes' ||
           cleanText === 'y' ||
@@ -182,12 +182,15 @@ export class MessagePipeline {
           cleanText === 'yeah' ||
           cleanText === 'sure'
 
-        // 🎯 Trigger transfer ONLY if it's an explicit command OR a confirmation to an active waiting prompt
+        // 🎯 FIX: Read the snapshot status from the database BEFORE generating any new responses
+        const initialSessionStatus = session.status
+
+        // 🎯 FIX: Only accept confirmation if the session was ALREADY in a waiting state when the user typed this message
         const shouldTriggerTransfer =
           isExplicitCommand ||
-          (session.status === 'waiting' && isCasualConfirmation)
+          (initialSessionStatus === 'waiting' && isCasualConfirmation)
 
-      /* --- SUB-ROUTE A: HUMAN TRANSFER REQUEST --- */
+        /* --- SUB-ROUTE A: HUMAN TRANSFER REQUEST --- */
         if (shouldTriggerTransfer) {
           const propertyDoc = await Property.findById(session.propertyId)
             .select('accountId')
@@ -199,15 +202,6 @@ export class MessagePipeline {
 
           const availableOperators = await getAvailableOperators(accountIdStr)
 
-          // 🎯 Logger updated to use correct object logging format
-          // logger.info({
-          //   msg: 'Debugging human handoff allocation diagnostics',
-          //   availableOperatorsCount: availableOperators?.length ?? 0,
-          //   availableOperatorsPayload: availableOperators,
-          //   propertyDoc,
-          //   accountIdStr,
-          // })
-
           if (
             availableOperators &&
             availableOperators.length > 0 &&
@@ -217,9 +211,9 @@ export class MessagePipeline {
             const targetOperator = availableOperators[0]
             const targetOperatorId = targetOperator._id.toString()
 
-           const isAlreadyAssigned =
-             (session.assignedOperatorId as any)?.toString() ===
-             targetOperatorId
+            const isAlreadyAssigned =
+              (session.assignedOperatorId as any)?.toString() ===
+              targetOperatorId
 
             session.aiEnabled = false
             session.aiEscalated = true
@@ -227,7 +221,6 @@ export class MessagePipeline {
             session.assignedOperatorId = new Types.ObjectId(targetOperatorId)
             await session.save()
 
-            // 🎯 FIX: Only increment the operator's load if they weren't already handling this chat
             if (!isAlreadyAssigned) {
               await Operator.updateOne(
                 { _id: targetOperatorId },
@@ -305,7 +298,6 @@ export class MessagePipeline {
             )
 
             EventService.emitToSession(sessionId, 'new_message', aiFallbackMsg)
-
             EventService.emitToProperty(propertyId, 'dashboard_chat_queued', {
               sessionId,
             })
@@ -355,10 +347,20 @@ export class MessagePipeline {
           message: aiMessage,
         })
 
+        // 🎯 FIX: Only transition the session status to 'waiting' for future turns.
+        // It won't match the transfer conditions on the current message invocation execution loop.
         if (aiResponse.shouldEscalate) {
           session.status = 'waiting'
           await session.save()
-
+          EventService.emitToProperty(
+            propertyId,
+            'dashboard_refresh_request',
+            {},
+          )
+        } else if (initialSessionStatus === 'waiting') {
+          // 🎯 FIX: If the user said something normal instead of confirming, reset the waiting gate
+          session.status = 'active'
+          await session.save()
           EventService.emitToProperty(
             propertyId,
             'dashboard_refresh_request',
@@ -369,6 +371,7 @@ export class MessagePipeline {
         return messagePayload
       }
     }
+
     /* ****************************************
      * STEP 5: Live Auto-assignment Fallback Checks
      **************************************** */
