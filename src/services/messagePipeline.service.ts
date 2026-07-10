@@ -208,7 +208,9 @@ export class MessagePipeline {
             const targetOperator = availableOperators[0]
             const targetOperatorId = targetOperator._id.toString()
 
-            const isAlreadyAssigned = (session.assignedOperatorId as any)?.toString() === targetOperatorId
+            const isAlreadyAssigned =
+              (session.assignedOperatorId as any)?.toString() ===
+              targetOperatorId
 
             session.aiEnabled = false
             session.aiEscalated = true
@@ -225,10 +227,15 @@ export class MessagePipeline {
 
             const transferText =
               `Chat was transferred from AI to ${targetOperator.firstName || ''} ${targetOperator.lastName || ''}`.trim()
-            const systemNotice = await createSystemMessage(sessionId, transferText)
+            const systemNotice = await createSystemMessage(
+              sessionId,
+              transferText,
+            )
 
             const systemPayload = {
-              ...(systemNotice.toObject ? systemNotice.toObject() : { ...systemNotice }),
+              ...(systemNotice.toObject
+                ? systemNotice.toObject()
+                : { ...systemNotice }),
               messageText: transferText,
             }
 
@@ -241,15 +248,17 @@ export class MessagePipeline {
             return messagePayload
           } else {
             // --- FALLBACK: NO OPERATORS AVAILABLE -> ROUTE TO UNASSIGNED QUEUE ---
-            session.aiEnabled = false
+            // 🎯 CHANGE HERE: Keep AI active so the user isn't ignored!
+            session.aiEnabled = true // Keep AI answering questions
             session.aiEscalated = true
-            session.status = 'queued'
+            session.status = 'queued' // Mark as queued for dashboard layouts
             await session.save()
 
             await QueueService.addToQueue(propertyId, sessionId)
 
             const fallbackReply =
-              'I am ready to transfer you, but all of our agents are offline. Please hold, and an agent will reply as soon as possible.'
+              'I am ready to transfer you, but all of our agents are currently offline. Please hold, and an agent will reply as soon as possible. In the meantime, feel free to keep asking me questions!'
+
             const aiFallbackMsg = await sendMessage(
               sessionId,
               'ai',

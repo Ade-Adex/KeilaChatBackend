@@ -1,6 +1,7 @@
 // /src/services/presence.service.ts
 
 import redisClient from '../config/redis.js'
+import Operator from '../models/Operator.js'
 
 export class PresenceService {
   static async setOperatorOnline(operatorId: string, socketId: string) {
@@ -42,10 +43,23 @@ export class PresenceService {
     return redisClient.hget(`operator:${operatorId}`, 'socketId')
   }
 
-  // 🎯 NEW: Lightweight endpoint heartbeat tracking method
+  // 🎯 REFACTORED HEARTBEAT METHOD
   static async recordHeartbeat(operatorId: string) {
-    const currentStatus =
-      (await redisClient.hget(`operator:${operatorId}`, 'status')) || 'online'
+    let currentStatus = await redisClient.hget(
+      `operator:${operatorId}`,
+      'status',
+    )
+
+    // If there's no status, or they were swept offline by the server, revive them!
+    if (!currentStatus || currentStatus === 'offline') {
+      currentStatus = 'online'
+
+      // Sync restoration directly back to MongoDB
+      await Operator.updateOne(
+        { _id: operatorId },
+        { $set: { isOnline: true, availabilityStatus: 'online' } },
+      )
+    }
 
     await redisClient.hset(`operator:${operatorId}`, {
       status: currentStatus,
@@ -53,7 +67,6 @@ export class PresenceService {
     })
     await redisClient.expire(`operator:${operatorId}`, 300)
   }
-
   static async setVisitorActive(visitorId: string, sessionId: string) {
     await redisClient.set(`visitor:session:${visitorId}`, sessionId)
   }
