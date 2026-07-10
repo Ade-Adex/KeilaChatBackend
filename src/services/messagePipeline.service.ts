@@ -187,7 +187,7 @@ export class MessagePipeline {
           isExplicitCommand ||
           (session.status === 'waiting' && isCasualConfirmation)
 
-        /* --- SUB-ROUTE A: HUMAN TRANSFER REQUEST --- */
+      /* --- SUB-ROUTE A: HUMAN TRANSFER REQUEST --- */
         if (shouldTriggerTransfer) {
           const propertyDoc = await Property.findById(session.propertyId)
             .select('accountId')
@@ -199,14 +199,14 @@ export class MessagePipeline {
 
           const availableOperators = await getAvailableOperators(accountIdStr)
 
-          // 🎯 FIX: Correct Pino Object Metadata logging pattern to avoid silent failures
-          logger.info({
-            msg: 'Debugging human handoff allocation diagnostics',
-            availableOperatorsCount: availableOperators?.length ?? 0,
-            availableOperatorsPayload: availableOperators,
-            propertyDoc,
-            accountIdStr,
-          })
+          // 🎯 Logger updated to use correct object logging format
+          // logger.info({
+          //   msg: 'Debugging human handoff allocation diagnostics',
+          //   availableOperatorsCount: availableOperators?.length ?? 0,
+          //   availableOperatorsPayload: availableOperators,
+          //   propertyDoc,
+          //   accountIdStr,
+          // })
 
           if (
             availableOperators &&
@@ -217,16 +217,23 @@ export class MessagePipeline {
             const targetOperator = availableOperators[0]
             const targetOperatorId = targetOperator._id.toString()
 
+           const isAlreadyAssigned =
+             (session.assignedOperatorId as any)?.toString() ===
+             targetOperatorId
+
             session.aiEnabled = false
             session.aiEscalated = true
             session.status = 'active'
             session.assignedOperatorId = new Types.ObjectId(targetOperatorId)
             await session.save()
 
-            await Operator.updateOne(
-              { _id: targetOperatorId },
-              { $inc: { activeChatsCount: 1 } },
-            )
+            // 🎯 FIX: Only increment the operator's load if they weren't already handling this chat
+            if (!isAlreadyAssigned) {
+              await Operator.updateOne(
+                { _id: targetOperatorId },
+                { $inc: { activeChatsCount: 1 } },
+              )
+            }
 
             const transferText =
               `Chat was transferred from AI to ${targetOperator.firstName || ''} ${targetOperator.lastName || ''}`.trim()
