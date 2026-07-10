@@ -1,5 +1,7 @@
 // /src/services/ai.service.ts
 
+// /src/services/ai.service.ts
+
 import ChatSession from '../models/ChatSession.js'
 import logger from '../bootstrap/logger.js'
 import { AppError } from './appError.js'
@@ -95,9 +97,8 @@ export class AIService {
       /* EMOTION DETECTION */
       if (angryWords.some((word) => cleanInput.includes(word))) {
         setMemory(sessionId, { lastEmotion: 'angry' })
-        // 🎯 FIX: Explicitly append confirmation request phrase
         return createResponse(
-          "I'm sorry this has been frustrating. Would you like me to connect you with a live support specialist right now?",
+          "I'm sorry this has been frustrating. Would you like me to connect you with a live support specialist right now? Please reply with \"Yes\" to confirm.",
           1,
           true,
         )
@@ -111,8 +112,8 @@ export class AIService {
       }
 
       /* HUMAN ESCALATION KEYWORDS */
-      if (humanWords.some((word) => cleanInput.includes(word))) {
-        // 🎯 FIX: Enforce that escalation intent responses ask a clean confirmation question
+      // 🎯 FIX: Verify that intent matches or words are present, and ask clearly before escalating
+      if (intent === 'human' || humanWords.some((word) => cleanInput.includes(word))) {
         const baseEscalationReply = randomResponse(escalationResponses)
         return createResponse(
           `${baseEscalationReply}\n\nWould you like me to transfer you to an agent? Please reply with "Yes" to confirm.`,
@@ -236,7 +237,7 @@ export class AIService {
       const activeFallbackPhrase = getRandomFallback()
 
       return createResponse(
-        `${activeFallbackPhrase}\n\nWould you like me to connect you with one of our support specialists?`,
+        `${activeFallbackPhrase}\n\nWould you like me to connect you with one of our support specialists? Please reply with "Yes" to confirm.`,
         finalConfidence,
         true,
       )
