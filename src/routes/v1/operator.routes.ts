@@ -17,6 +17,7 @@ import {
   updatePresence,
   availableOperators,
   getActiveOperatorsController,
+  handleHeartbeat,
 } from '../../controllers/operator.controller.js'
 
 
@@ -61,6 +62,11 @@ router.get(
 router.patch(
   '/presence',
   updatePresence,
+)
+
+router.post(
+  '/heartbeat',
+  handleHeartbeat,
 )
 
 router.get(

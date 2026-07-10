@@ -244,3 +244,34 @@ export const availableOperators = catchAsync(
 )
 
 
+/* -------------------------------------------------------------------------- */
+/* LIVE OPERATOR HEARTBEAT                         */
+/* -------------------------------------------------------------------------- */
+
+// 🎯 NEW: Keep the backend presence cache fresh & prevent wrong AI routing triage loops
+export const handleHeartbeat = catchAsync(
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const operatorId = req.user?.userId
+
+    if (!operatorId) {
+      return next(new AppError('Unauthorized: Operator session missing.', 401))
+    }
+
+    const opIdStr = operatorId.toString()
+
+    // 1️⃣ Import PresenceService lazily or statically depending on your stack file preferences
+    const { PresenceService } = await import('../services/presence.service.js')
+
+    // 2️⃣ Sync runtime states concurrently across layers
+    await PresenceService.recordHeartbeat(opIdStr)
+    await Operator.updateOne(
+      { _id: opIdStr },
+      { $set: { lastSeen: new Date(), isOnline: true } }
+    )
+
+    return res.status(200).json({
+      success: true,
+      message: 'Heartbeat acknowledged successfully.',
+    })
+  },
+)
