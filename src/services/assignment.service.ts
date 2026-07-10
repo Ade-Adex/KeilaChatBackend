@@ -1,16 +1,26 @@
 // /src/services/assignment.service.ts
-
 import Operator from '../models/Operator.js'
 import ChatSession from '../models/ChatSession.js'
-
+import Property from '../models/Property.js' // 🎯 Added import
 import { getAvailableOperators } from './operator.service.js'
 
 export class AssignmentService {
   /**
-   * Assign operator to session
+   * Assign operator to session safely using the correct account reference
    */
   static async assignOperatorToSession(propertyId: string, sessionId: string) {
-    const operators = await getAvailableOperators(propertyId)
+    // 🎯 FIX: Fetch the property first to extract its parent accountId
+    const propertyDoc = await Property.findById(propertyId)
+      .select('accountId')
+      .lean()
+    if (!propertyDoc || !propertyDoc.accountId) {
+      return null
+    }
+
+    // 🎯 FIX: Pass the correct accountId string instead of the propertyId string
+    const operators = await getAvailableOperators(
+      propertyDoc.accountId.toString(),
+    )
 
     const operator = operators.at(0)
 
@@ -25,12 +35,15 @@ export class AssignmentService {
       lastActivityAt: new Date(),
     })
 
-    operator.activeChatsCount = (operator.activeChatsCount ?? 0) + 1
-
-    await operator.save()
+    // 🎯 Use updateOne to safely prevent schema version conflicts or missing document states
+    await Operator.updateOne(
+      { _id: operator._id },
+      { $inc: { activeChatsCount: 1 } },
+    )
 
     return operator
   }
+
   /**
    * Release operator after chat ends
    */
