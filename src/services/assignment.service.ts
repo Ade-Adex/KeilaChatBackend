@@ -3,6 +3,7 @@ import Operator from '../models/Operator.js'
 import ChatSession from '../models/ChatSession.js'
 import Property from '../models/Property.js' // 🎯 Added import
 import { getAvailableOperators } from './operator.service.js'
+import logger from '../bootstrap/logger.js'
 
 export class AssignmentService {
   /**
@@ -24,10 +25,13 @@ export class AssignmentService {
 
     const operator = operators.at(0)
 
-    console.log('Assigned operator:', operator)
-    console.log('Session ID:', sessionId)
-    console.log('Property ID:', propertyId)
-    console.log('Account ID:', propertyDoc)
+     logger.info({
+       msg: 'Debugging human handoff allocation diagnostics',
+       operators: operator,
+       sessionId: sessionId,
+       propertyId: propertyId,
+       propertyDoc: propertyDoc,
+     })
 
     if (!operator) {
       return null

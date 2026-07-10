@@ -14,6 +14,7 @@ import { EventService } from './event.service.js'
 import { createSystemMessage, sendMessage } from './message.service.js'
 import { getAvailableOperators } from './operator.service.js'
 import { QueueService } from './queue.service.js'
+import logger from '../bootstrap/logger.js'
 
 export interface ProcessMessagePayload {
   sessionId: string
@@ -198,9 +199,14 @@ export class MessagePipeline {
 
           const availableOperators = await getAvailableOperators(accountIdStr)
 
-          console.log('availableOperators', availableOperators)
-          console.log(' propertyDoc',  propertyDoc)
-          console.log('accountIdStr', accountIdStr)
+          // 🎯 FIX: Correct Pino Object Metadata logging pattern to avoid silent failures
+          logger.info({
+            msg: 'Debugging human handoff allocation diagnostics',
+            availableOperatorsCount: availableOperators?.length ?? 0,
+            availableOperatorsPayload: availableOperators,
+            propertyDoc,
+            accountIdStr,
+          })
 
           if (
             availableOperators &&
@@ -274,12 +280,11 @@ export class MessagePipeline {
             return messagePayload
           } else {
             // --- FALLBACK: NO OPERATORS AVAILABLE -> ROUTE TO UNASSIGNED QUEUE ---
-            session.aiEnabled = false // Turn off AI so operators can claim it cleanly
+            session.aiEnabled = false
             session.aiEscalated = true
-            session.status = 'queued' // Place into unassigned list
+            session.status = 'queued'
             await session.save()
 
-            // Route into the systematic backend queuing mechanism
             await QueueService.addToQueue(propertyId, sessionId)
 
             const fallbackReply =
@@ -294,7 +299,6 @@ export class MessagePipeline {
 
             EventService.emitToSession(sessionId, 'new_message', aiFallbackMsg)
 
-            // Fire websocket alerts so agent dashboards update the 'Queue' tab instantly
             EventService.emitToProperty(propertyId, 'dashboard_chat_queued', {
               sessionId,
             })
