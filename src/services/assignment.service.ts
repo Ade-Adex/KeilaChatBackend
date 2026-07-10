@@ -24,6 +24,11 @@ export class AssignmentService {
 
     const operator = operators.at(0)
 
+    console.log('Assigned operator:', operator)
+    console.log('Session ID:', sessionId)
+    console.log('Property ID:', propertyId)
+    console.log('Account ID:', propertyDoc)
+
     if (!operator) {
       return null
     }
