@@ -198,6 +198,10 @@ export class MessagePipeline {
 
           const availableOperators = await getAvailableOperators(accountIdStr)
 
+          console.log('availableOperators', availableOperators)
+          console.log(' propertyDoc',  propertyDoc)
+          console.log('accountIdStr', accountIdStr)
+
           if (
             availableOperators &&
             availableOperators.length > 0 &&
