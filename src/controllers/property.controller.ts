@@ -83,7 +83,6 @@ export const getPropertyDetails = catchAsync(
   },
 )
 
-
 // Add this export to your /src/controllers/property.controller.ts file
 
 /* -------------------------------------------------------------------------- */
@@ -92,23 +91,20 @@ export const getPropertyDetails = catchAsync(
 
 export const getMyProperties = catchAsync(
   async (req: AuthRequest, res: Response) => {
-    // Rely on your tenant/auth middleware injected header context safely
     const accountId = req.headers['x-account-id'] as string
 
     if (!accountId) {
-      res.status(200).json({ success: true, data: [] })
-      return
+      return res.status(200).json({
+        success: true,
+        data: [],
+      })
     }
 
-    // Pass account context into your service layout layer
-    const properties = await PropertyService.getWebsiteSettings(accountId)
-    
-    // Normalize into an array match format if your service returns a single document block
-    const propertiesArray = properties ? [properties] : []
+    const properties = await PropertyService.getProperties(accountId)
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      data: propertiesArray,
+      data: properties,
     })
   },
 )

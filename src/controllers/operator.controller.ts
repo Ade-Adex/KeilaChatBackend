@@ -142,13 +142,13 @@ export const inviteOperator = catchAsync(
       return next(new AppError('Account context missing.', 400))
     }
 
-    const { email, role } = req.body
+    const { email, role, assignedProperties = [] } = req.body
 
     if (!email) {
       return next(new AppError('Email is required.', 400))
     }
 
-    await inviteOperatorToAccount(accountId, email, role ?? 'agent')
+    await inviteOperatorToAccount(accountId, email, role ?? 'agent', assignedProperties,)
 
     return res.status(200).json({
       status: 'success',

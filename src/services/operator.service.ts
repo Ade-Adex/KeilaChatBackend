@@ -11,6 +11,7 @@ import { sendOperatorInvitationEmail } from '../lib/email.js'
 import { ENV } from '../config/env.js'
 import { hashPassword } from '../utils/auth/password.js'
 import { Types } from 'mongoose'
+import Property from '../models/Property.js'
 
 export async function getOperatorsByAccount(accountId: string) {
   return Operator.find({
@@ -26,6 +27,7 @@ export async function inviteOperatorToAccount(
   accountId: string,
   email: string,
   role: 'admin' | 'supervisor' | 'agent',
+  assignedProperties: string[] = [],
 ) {
   const normalizedEmail = email.toLowerCase().trim()
   const BaseURL = ENV.BASE_URL || ''
@@ -39,6 +41,17 @@ export async function inviteOperatorToAccount(
     throw new AppError('An operator with this email already exists.', 400)
   }
 
+
+  if (
+    role === 'agent' &&
+    (!assignedProperties || assignedProperties.length === 0)
+  ) {
+    throw new AppError(
+      'Please assign at least one property to this agent.',
+      400,
+    )
+  }
+
   const account = await Account.findById(accountId)
   if (!account) {
     throw new AppError('Account not found.', 404)
@@ -46,13 +59,37 @@ export async function inviteOperatorToAccount(
 
   const inviteToken = generateInvitationToken()
 
+  /*
+|--------------------------------------------------------------------------
+| Automatically assign operator to all properties
+| in this account.
+|--------------------------------------------------------------------------
+*/
+
+  const propertyIds = assignedProperties.map((id) => new Types.ObjectId(id))
+
+  const validProperties = await Property.find({
+    _id: { $in: propertyIds },
+    accountId: new Types.ObjectId(accountId),
+  }).select('_id')
+
+  if (validProperties.length !== assignedProperties.length) {
+    throw new AppError('One or more selected properties are invalid.', 400)
+  }
+
   await Operator.create({
     accountId: new Types.ObjectId(accountId),
+
     email: normalizedEmail,
+
     role,
+
     status: 'invited',
+
     inviteToken,
-    assignedProperties: [],
+
+    assignedProperties: validProperties.map((property) => property._id),
+
     isOnline: false,
   })
 
@@ -194,4 +231,3 @@ export async function getAvailableOperators(
       activeChatsCount: 1,
     })
 }
-

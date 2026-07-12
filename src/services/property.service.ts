@@ -181,4 +181,20 @@ export class PropertyService {
 
     return property
   }
+
+  /**
+   * Get all properties belonging to an account
+   */
+  static async getProperties(accountId: string) {
+    // logger.info({ accountId }, 'Loading account properties')
+
+    return Property.find({
+      accountId,
+    })
+      .select('_id name domain widgetId')
+      .sort({
+        createdAt: 1,
+      })
+      .lean()
+  }
 }
