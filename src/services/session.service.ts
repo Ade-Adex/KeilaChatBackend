@@ -1,4 +1,5 @@
 // /src/services/session.service.ts
+import mongoose from 'mongoose'
 import ChatSession from '../models/ChatSession.js'
 import Property from '../models/Property.js'
 import Visitor from '../models/Visitor.js'
@@ -143,6 +144,14 @@ export async function initiateVisitorSession({
       visitorJoinedAt: new Date(),
       lastActivityAt: new Date(),
     }).then((doc) => doc.toObject())
+
+    // --- NEW ACCOUNT WORKSPACE ECOSYSTEM CHAT UPDATE ---
+    await mongoose
+      .model('Account')
+      .updateOne(
+        { _id: property.accountId },
+        { $inc: { 'usage.totalChats': 1 } },
+      )
   }
 
   if (!session) {

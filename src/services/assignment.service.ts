@@ -25,30 +25,44 @@ export class AssignmentService {
 
     const operator = operators.at(0)
 
-     logger.info({
-       msg: 'Debugging human handoff allocation diagnostics',
-       operators: operator,
-       sessionId: sessionId,
-       propertyId: propertyId,
-       propertyDoc: propertyDoc,
-     })
+    //  logger.info({
+    //    msg: 'Debugging human handoff allocation diagnostics',
+    //    operators: operator,
+    //    sessionId: sessionId,
+    //    propertyId: propertyId,
+    //    propertyDoc: propertyDoc,
+    //  })
 
     if (!operator) {
       return null
     }
 
-    await ChatSession.findByIdAndUpdate(sessionId, {
-      assignedOperatorId: operator._id,
-      status: 'active',
-      operatorJoinedAt: new Date(),
-      lastActivityAt: new Date(),
-    })
+   const currentSession = await ChatSession.findById(sessionId)
+     .select('createdAt')
+     .lean()
+   const now = new Date()
+   // Calculate duration between session creation and assignment
+   const waitTimeMs = currentSession
+     ? now.getTime() - new Date(currentSession.createdAt).getTime()
+     : 0
 
-    // 🎯 Use updateOne to safely prevent schema version conflicts or missing document states
-    await Operator.updateOne(
-      { _id: operator._id },
-      { $inc: { activeChatsCount: 1 } },
-    )
+   await ChatSession.findByIdAndUpdate(sessionId, {
+     assignedOperatorId: operator._id,
+     status: 'active',
+     operatorJoinedAt: now,
+     lastActivityAt: now,
+     waitTimeMs: waitTimeMs,
+   })
+
+   await Operator.updateOne(
+     { _id: operator._id },
+     {
+       $inc: {
+         activeChatsCount: 1,
+         'stats.chatsHandled': 1, 
+       },
+     },
+   )
 
     return operator
   }

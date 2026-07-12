@@ -54,10 +54,10 @@ import { encryptionService } from '../lib/security/encryption.service.js'
         logger.info(`🔌 Connected: ${socket.id}`)
 
         /*
-        ****************************************
-        * JOIN PROPERTY DASHBOARD
-        ****************************************
-        */
+         ****************************************
+         * JOIN PROPERTY DASHBOARD
+         ****************************************
+         */
         socket.on(
           'join_property_dashboard',
           async ({ propertyId, operatorId }: JoinDashboardPayload) => {
@@ -106,7 +106,10 @@ import { encryptionService } from '../lib/security/encryption.service.js'
               socket.join(`operator:${data.operatorId}`)
               socket.data.operatorId = data.operatorId
 
-              await PresenceService.setOperatorOnline(data.operatorId, socket.id)
+              await PresenceService.setOperatorOnline(
+                data.operatorId,
+                socket.id,
+              )
 
               // 🛡️ ONLY intercept if AI is off, or the conversation was explicitly escalated/queued for human eyes.
               const isReadyForHuman =
@@ -120,10 +123,28 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                   session.status === 'waiting' ||
                   !session.assignedOperatorId)
               ) {
-                await ChatSession.findByIdAndUpdate(data.sessionId, {
-                  status: 'active',
-                  assignedOperatorId: data.operatorId,
-                })
+
+               const now = new Date()
+               const waitTimeMs =
+                 now.getTime() - new Date(session.createdAt).getTime()
+
+               // 🎯 FIXED: Atomic update that tracks assignment time, wait time, and increments workload history!
+               await ChatSession.findByIdAndUpdate(data.sessionId, {
+                 status: 'active',
+                 assignedOperatorId: data.operatorId,
+                 operatorJoinedAt: now,
+                 waitTimeMs: waitTimeMs,
+               })
+
+                await Operator.updateOne(
+                  { _id: data.operatorId },
+                  {
+                    $inc: {
+                      activeChatsCount: 1,
+                      'stats.chatsHandled': 1, // 🎯 Tracks workload history accurately
+                    },
+                  },
+                )
 
                 // Notify the visitor widget and refresh the dashboard panels globally
                 this.io.to(room).emit('session_status_changed', {
@@ -145,7 +166,6 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                   avatar: operatorProfile.avatar || '',
                 })
               }
-
 
               // const messages = (
               //   await Message.find({
@@ -174,8 +194,6 @@ import { encryptionService } from '../lib/security/encryption.service.js'
               //     }
               //   }
               // })
-
-
 
               const messages = (
                 await Message.find({
@@ -206,9 +224,6 @@ import { encryptionService } from '../lib/security/encryption.service.js'
 
               socket.emit('chat_history', messages)
 
-
-
-
               if (session.unreadOperator > 0) {
                 await markAllSeenInSession(
                   data.sessionId,
@@ -222,7 +237,9 @@ import { encryptionService } from '../lib/security/encryption.service.js'
 
                 this.io
                   .to(`property:dashboard:${session.propertyId}`)
-                  .emit('dashboard_unread_cleared', { sessionId: data.sessionId })
+                  .emit('dashboard_unread_cleared', {
+                    sessionId: data.sessionId,
+                  })
               }
             }
 
@@ -248,10 +265,10 @@ import { encryptionService } from '../lib/security/encryption.service.js'
         })
 
         /*
-        ****************************************
-        * TYPING EVENT PIPELINE
-        ****************************************
-        */
+         ****************************************
+         * TYPING EVENT PIPELINE
+         ****************************************
+         */
         socket.on('typing', (data: TypingPayload) => {
           try {
             if (!data.sessionId) return
@@ -268,7 +285,10 @@ import { encryptionService } from '../lib/security/encryption.service.js'
               actor: calculatedActor,
             })
           } catch (error) {
-            logger.error(error, 'Real-time typing event routing pipeline crashed')
+            logger.error(
+              error,
+              'Real-time typing event routing pipeline crashed',
+            )
           }
         })
 
@@ -287,15 +307,17 @@ import { encryptionService } from '../lib/security/encryption.service.js'
             })
           } catch (error) {
             logger.error(error, 'Socket message processing failed')
-            socket.emit('message_error', { message: 'Message processing failed' })
+            socket.emit('message_error', {
+              message: 'Message processing failed',
+            })
           }
         })
 
         /*
-        ****************************************
-        * 🎯 NEW: MESSAGE DELIVERED RECEIPT LISTENER
-        ****************************************
-        */
+         ****************************************
+         * 🎯 NEW: MESSAGE DELIVERED RECEIPT LISTENER
+         ****************************************
+         */
         socket.on(
           'message_delivered',
           async (data: { messageId: string; sessionId: string }) => {
@@ -319,10 +341,10 @@ import { encryptionService } from '../lib/security/encryption.service.js'
         )
 
         /*
-        ****************************************
-        * 🎯 NEW: BULK WINDOW SEEN RECEIPT LISTENER
-        ****************************************
-        */
+         ****************************************
+         * 🎯 NEW: BULK WINDOW SEEN RECEIPT LISTENER
+         ****************************************
+         */
         socket.on(
           'mark_session_seen',
           async (data: {
@@ -343,7 +365,11 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                 data.operatorId,
               )
               if (targetSenderType === 'operator') {
-                await markAllSeenInSession(data.sessionId, 'ai', data.operatorId)
+                await markAllSeenInSession(
+                  data.sessionId,
+                  'ai',
+                  data.operatorId,
+                )
               }
 
               const session = await ChatSession.findById(data.sessionId).lean()
@@ -372,48 +398,66 @@ import { encryptionService } from '../lib/security/encryption.service.js'
         )
 
         /*
-        ****************************************
-        * JOIN NOTIFICATIONS
-        ****************************************
-        */
-        socket.on('join_notifications', ({ propertyId }: NotificationPayload) => {
-          if (!propertyId) return
+         ****************************************
+         * JOIN NOTIFICATIONS
+         ****************************************
+         */
+        socket.on(
+          'join_notifications',
+          ({ propertyId }: NotificationPayload) => {
+            if (!propertyId) return
 
-          socket.join(`property:dashboard:${propertyId}`)
-          logger.info(`🔔 Notification room joined ${propertyId}`)
-        })
+            socket.join(`property:dashboard:${propertyId}`)
+            logger.info(`🔔 Notification room joined ${propertyId}`)
+          },
+        )
 
         /*
-        ****************************************
-        * HEARTBEAT
-        ****************************************
-        */
+         ****************************************
+         * HEARTBEAT
+         ****************************************
+         */
         socket.on('ping_server', () => {
           socket.emit('pong_server')
         })
 
         /*
-        ****************************************
-        * 🎯 NEW: CHAT TRANSFER AGENT PIPELINE
-        ****************************************
-        */
+         ****************************************
+         * 🎯 NEW: CHAT TRANSFER AGENT PIPELINE
+         ****************************************
+         */
         socket.on(
           'transfer_chat_session',
           async (data: { sessionId: string; targetOperatorId: string }) => {
             try {
               if (!data.sessionId || !data.targetOperatorId) return
 
-              // 1. Fetch the incoming new assigned operator profile details
+              // 1. Fetch current session to know who is transferring it away
+              const currentSession = await ChatSession.findById(data.sessionId)
+                .select('assignedOperatorId propertyId')
+                .lean()
+
+              if (!currentSession) return
+
+              const fromOperatorId = currentSession.assignedOperatorId
+                ? currentSession.assignedOperatorId.toString()
+                : null
+
+              // Safeguard: Prevent transferring to the current operator
+              if (fromOperatorId === data.targetOperatorId) return
+
+              // 2. Fetch the incoming new assigned operator profile details
               const newOperator = await Operator.findById(data.targetOperatorId)
                 .select('firstName lastName avatar')
                 .lean()
               if (!newOperator) return
 
-              // 2. Update the session assignment on the database layer
+              // 3. Update the database session assignment using clean atomic adjustments
               const updatedSession = await ChatSession.findByIdAndUpdate(
                 data.sessionId,
                 {
                   assignedOperatorId: data.targetOperatorId,
+                  transferredTo: data.targetOperatorId, // Track transfer history
                   status: 'active',
                 },
                 { returnDocument: 'after' },
@@ -421,8 +465,53 @@ import { encryptionService } from '../lib/security/encryption.service.js'
 
               if (!updatedSession) return
 
-              const room = `session:${data.sessionId}`
+              /* -------------------------------------------------------------------------- */
+              /* 🎯 WORKLOAD COUNTER CORRECTION METRICS                                     */
+              /* -------------------------------------------------------------------------- */
+              // Decrement old operator's load safely
+              if (fromOperatorId) {
+                await Operator.updateOne(
+                  { _id: fromOperatorId, activeChatsCount: { $gt: 0 } },
+                  { $inc: { activeChatsCount: -1 } },
+                )
 
+                // Evict the old operator's socket from this session room if online
+                const oldOpSocketId =
+                  await PresenceService.getOperatorSocket(fromOperatorId)
+                if (oldOpSocketId) {
+                  const oldSocketInstance =
+                    this.io.sockets.sockets.get(oldOpSocketId)
+                  if (oldSocketInstance) {
+                    oldSocketInstance.leave(`session:${data.sessionId}`)
+                  }
+                }
+              }
+
+              // Increment new operator's load and stats workload
+              await Operator.updateOne(
+                { _id: data.targetOperatorId },
+                {
+                  $inc: {
+                    activeChatsCount: 1,
+                    'stats.chatsHandled': 1,
+                  },
+                },
+              )
+
+              // Force the incoming operator's active socket to join the live room dynamically
+              const newOpSocketId = await PresenceService.getOperatorSocket(
+                data.targetOperatorId,
+              )
+              if (newOpSocketId) {
+                const newSocketInstance =
+                  this.io.sockets.sockets.get(newOpSocketId)
+                if (newSocketInstance) {
+                  newSocketInstance.join(`session:${data.sessionId}`)
+                }
+              }
+              /* -------------------------------------------------------------------------- */
+
+              const room = `session:${data.sessionId}`
               const transferText =
                 `Chat was transferred to ${newOperator.firstName} ${newOperator.lastName || ''}`.trim()
 
@@ -454,7 +543,9 @@ import { encryptionService } from '../lib/security/encryption.service.js'
 
               // 6. Notify the property dashboards across all operators to dynamically reposition sidebars
               this.io
-                .to(`property:dashboard:${updatedSession.propertyId.toString()}`)
+                .to(
+                  `property:dashboard:${updatedSession.propertyId.toString()}`,
+                )
                 .emit('dashboard_refresh_request')
             } catch (error) {
               logger.error(
@@ -464,6 +555,7 @@ import { encryptionService } from '../lib/security/encryption.service.js'
             }
           },
         )
+
         /* -------------------------------------------------- */
         /* DISCONNECT STATE                                   */
         /* -------------------------------------------------- */

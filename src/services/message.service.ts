@@ -6,6 +6,7 @@ import Message from '../models/Message.js'
   import { encryptionService } from '../lib/security/encryption.service.js'
 import type { MessageType, SenderType } from '../types/message.types.js'
 import { AppError } from './appError.js'
+import mongoose from 'mongoose'
 
   // Send Message
 
@@ -47,47 +48,86 @@ import { AppError } from './appError.js'
       }
     }
 
-        const encryptedMessage = messageText
-          ? encryptionService.encrypt(messageText)
-          : undefined
+    const encryptedMessage = messageText
+      ? encryptionService.encrypt(messageText)
+      : undefined
 
-        const messagePayload: Record<string, unknown> = {
-          sessionId,
-          senderType,
-          senderId,
-          messageType: calculatedType,
-          status: 'sent',
-          isFromAI: options?.isFromAI ?? false,
-          media: options?.media ?? [],
-        }
+    const messagePayload: Record<string, unknown> = {
+      sessionId,
+      senderType,
+      senderId,
+      messageType: calculatedType,
+      status: 'sent',
+      isFromAI: options?.isFromAI ?? false,
+      media: options?.media ?? [],
+    }
 
-        if (encryptedMessage) {
-          messagePayload.encryptedMessage = encryptedMessage
-        }
+    if (encryptedMessage) {
+      messagePayload.encryptedMessage = encryptedMessage
+    }
 
-        const message = await Message.create(messagePayload as any)
+    const message = await Message.create(messagePayload as any)
 
-        switch (senderType) {
-          case 'operator':
-            session.analytics.operatorMessages += 1
-            session.unreadVisitor += 1
-            break
+    /* -------------------------------------------------------------------------- */
+    /* 🎯 NEW: INCREMENT PARENT ACCOUNT ECOSYSTEM USAGE METRICS                  */
+    /* -------------------------------------------------------------------------- */
+    const propertyDoc = (await mongoose
+      .model('Property')
+      .findById(session.propertyId)
+      .select('accountId')
+      .lean()) as { accountId?: mongoose.Types.ObjectId } | null
 
-          case 'ai':
-            session.analytics.aiMessages += 1
-            session.unreadVisitor += 1
-            break
+    if (propertyDoc && propertyDoc.accountId) {
+      await mongoose.model('Account').updateOne(
+        { _id: propertyDoc.accountId },
+        {
+          $inc: {
+            'usage.totalMessages': 1,
+            'usage.currentMonthMessages': 1,
+          },
+        },
+      )
+    }
 
-          case 'visitor':
-            session.unreadOperator += 1
-            break
+    // Ensure analytical metrics blocks are initialized safely
+    if (!session.analytics) {
+      session.analytics = {
+        totalMessages: 0,
+        visitorMessages: 0,
+        operatorMessages: 0,
+        aiMessages: 0,
+        averageReplyTime: 0,
+        duration: 0,
+      }
+    }
 
-          case 'system':
-          default:
-            break
-        }
+    /* -------------------------------------------------------------------------- */
+    /* 🎯 NEW: ACCUMULATE EXACT SENDER-TYPE METRICS                               */
+    /* -------------------------------------------------------------------------- */
+
+    switch (senderType) {
+      case 'operator':
+        session.analytics.operatorMessages += 1
+        session.unreadVisitor += 1
+        break
+
+      case 'ai':
+        session.analytics.aiMessages += 1
+        session.unreadVisitor += 1
+        break
+
+      case 'visitor':
+        session.analytics.visitorMessages += 1
+        session.unreadOperator += 1
+        break
+
+      case 'system':
+      default:
+        break
+    }
 
     // Update session preview
+    session.analytics.totalMessages += 1
     session.lastMessage =
       messageText || `📁 Sent an attachment (${calculatedType})`
     session.lastMessageAt = new Date()
@@ -99,7 +139,6 @@ import { AppError } from './appError.js'
     result.messageText = messageText || ''
 
     return result
-
   }
 
   // System Message, This is what allows: John joined chat, John left chat, Conversation ended, Conversation transferred

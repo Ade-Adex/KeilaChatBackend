@@ -4,7 +4,7 @@ import ChatSession from '../models/ChatSession.js'
 import Visitor from '../models/Visitor.js'
 import Property from '../models/Property.js'
 import Operator from '../models/Operator.js'
-import { Types } from 'mongoose'
+import mongoose, { Types } from 'mongoose'
 
 
 import { PresenceService } from './presence.service.js'
@@ -66,6 +66,24 @@ export async function findOrCreateVisitor(payload: VisitorPayload) {
       setDefaultsOnInsert: true,
     },
   )
+
+  /* -------------------------------------------------------------------------- */
+  /* 🎯 ATOMIC INCREMENT: TOTAL ACCOUNT VISITORS                                */
+  /* -------------------------------------------------------------------------- */
+  // If pageViews equals 1, this document was newly inserted via upsert!
+  if (visitor && visitor.pageViews === 1) {
+    const propertyDoc = await Property.findById(propertyId)
+      .select('accountId')
+      .lean()
+    if (propertyDoc?.accountId) {
+      await mongoose
+        .model('Account')
+        .updateOne(
+          { _id: propertyDoc.accountId },
+          { $inc: { 'usage.totalVisitors': 1 } },
+        )
+    }
+  }
 
   return visitor
 }
@@ -173,8 +191,25 @@ export async function findOrCreateSession(
     lastActivityAt: new Date(),
   })
 
+  /* -------------------------------------------------------------------------- */
+  /* 🎯 ATOMIC INCREMENT: TOTAL ACCOUNT CONVERSATIONS                           */
+  /* -------------------------------------------------------------------------- */
+  // Since we bypassed the return block above, this session is guaranteed to be new.
+  const propertyDoc = await Property.findById(propertyId)
+    .select('accountId')
+    .lean()
+  if (propertyDoc?.accountId) {
+    await mongoose
+      .model('Account')
+      .updateOne(
+        { _id: propertyDoc.accountId },
+        { $inc: { 'usage.totalChats': 1 } },
+      )
+  }
+
   return session
 }
+
 
 export async function assignOperator(accountId: string) {
   const operator = await Operator.findOne({
@@ -259,31 +294,27 @@ export async function closeChat(
   if (!session) {
     throw new AppError('Session not found', 404)
   }
+const now = new Date()
+session.status = 'closed'
+session.closedBy = closedBy
+session.endedAt = now
+session.archived = true
 
-  session.status = 'closed'
+if (session.startedAt) {
+  const resolutionTimeMs = now.getTime() - new Date(session.startedAt).getTime()
+  session.resolutionTimeMs = resolutionTimeMs
+  session.analytics.duration = Math.floor(resolutionTimeMs / 1000) 
+}
 
-  session.closedBy = closedBy
+await session.save()
 
-  session.endedAt = new Date()
-
-  session.archived = true
-
-  await session.save()
-
-  if (session.assignedOperatorId) {
-    await Operator.updateOne(
-      {
-        _id: session.assignedOperatorId,
-        activeChatsCount: { $gt: 0 },
-      },
-      {
-        $inc: {
-          activeChatsCount: -1,
-        },
-      },
-    )
+if (session.assignedOperatorId) {
+  await Operator.updateOne(
+    { _id: session.assignedOperatorId, activeChatsCount: { $gt: 0 } },
+    { $inc: { activeChatsCount: -1 } },
+  )
   }
-
+  
   return session
 }
 
@@ -299,9 +330,16 @@ export async function assignSessionToOperator(
     throw new AppError('Session not found', 404)
   }
 
+  const now = new Date()
+
+  // 🎯 NEW: Calculate wait time metrics from creation to human pickup
+  if (session.status === 'queued' || session.status === 'waiting') {
+    session.operatorJoinedAt = now
+    session.waitTimeMs = now.getTime() - new Date(session.createdAt).getTime()
+  }
+
   session.assignedOperatorId = new Types.ObjectId(operatorId)
   session.status = 'active'
-
   await session.save()
 
   await Operator.updateOne(
@@ -309,6 +347,7 @@ export async function assignSessionToOperator(
     {
       $inc: {
         activeChatsCount: 1,
+        'stats.chatsHandled': 1,
       },
     },
   )

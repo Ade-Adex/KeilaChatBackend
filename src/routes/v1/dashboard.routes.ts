@@ -10,6 +10,7 @@ import {
 
 import { authMiddleware } from '../../middleware/auth.middleware.js'
 import { tenantMiddleware } from '../../middleware/tenant.middleware.js'
+import { getDashboardAnalytics } from '../../controllers/analytics.controller.js'
 
 const router = Router()
 
@@ -21,5 +22,7 @@ router.get('/:propertyId/overview', getOverview)
 router.get('/:propertyId/queue', getQueue)
 
 router.get('/:propertyId/active-chats', getActiveChats)
+
+router.get('/analytics', getDashboardAnalytics)
 
 export default router
