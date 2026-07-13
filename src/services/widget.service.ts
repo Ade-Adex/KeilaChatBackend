@@ -218,17 +218,26 @@ export async function createOrUpdateVisitor(
     const userTimezone = clientMetadata?.timezone
     if ((country === 'Unknown' || !country) && userTimezone) {
       const tzData = ct.getTimezone(userTimezone)
+
       if (tzData && tzData.countries && tzData.countries.length > 0) {
         // Grab the primary country match structure mapped to this IANA code
         const primaryCountryCode = tzData.countries[0]
-        const countryData = ct.getCountry(primaryCountryCode)
-        if (countryData) {
-          country = countryData.name // e.g., converts "Africa/Lagos" -> "Nigeria"
+
+        // 🎯 FIX 1: Ensure it's not undefined, and cast safely using an explicit type assertion
+        if (primaryCountryCode) {
+          const countryData = ct.getCountry(primaryCountryCode as any as string)
+          if (countryData) {
+            country = countryData.name // e.g., converts "Africa/Lagos" -> "Nigeria"
+          }
         }
       } else if (userTimezone.includes('/')) {
         // Simple structural fallback parsing if the string contains a slash (e.g., "Europe/London" -> "Europe")
         const dynamicRegion = userTimezone.split('/')[0]
-        country = dynamicRegion.replace('_', ' ')
+
+        // 🎯 FIX 2: Add a protective truthiness check before calling .replace()
+        if (dynamicRegion) {
+          country = dynamicRegion.replace('_', ' ')
+        }
       }
     }
 
