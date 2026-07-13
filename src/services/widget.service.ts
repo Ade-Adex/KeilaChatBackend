@@ -10,8 +10,10 @@ import { normalizeDomain } from '../utils/domain.utils.js'
 import { generateVisitorTrackingId } from '../utils/visitor/identity.js'
 
 
+
 import useragent from 'useragent'
 import geoip from 'geoip-lite'
+import ct from 'countries-and-timezones'
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -167,7 +169,7 @@ export async function createOrUpdateVisitor(
     screenResolution: string
     timezone: string
   },
-  reqIp?: string
+  reqIp?: string,
 ) {
   try {
     const trackingIdToUse =
@@ -178,11 +180,11 @@ export async function createOrUpdateVisitor(
         : generateVisitorTrackingId()
 
     const uaString = clientMetadata?.userAgent || ''
-    
-    // 1️⃣ Parse User-Agent using the package
+
+    // 1️⃣ Parse User-Agent
     const agent = useragent.parse(uaString)
-    const browser = agent.toAgent() // e.g., "Chrome 124.0.0"
-    const operatingSystem = agent.os.toString() // e.g., "Windows 11"
+    const browser = agent.toAgent()
+    const operatingSystem = agent.os.toString()
 
     // 2️⃣ Device classification logic
     let deviceType: 'desktop' | 'mobile' | 'tablet' = 'desktop'
@@ -192,7 +194,7 @@ export async function createOrUpdateVisitor(
       deviceType = 'tablet'
     }
 
-    // 3️⃣ Clean Local IP Addresses for GeoIP and lookup geo-data
+    // 3️⃣ Clean Local IP Addresses
     let cleanIp = reqIp || '127.0.0.1'
     if (cleanIp === '::1' || cleanIp === '::ffff:127.0.0.1') {
       cleanIp = '127.0.0.1'
@@ -203,7 +205,7 @@ export async function createOrUpdateVisitor(
     let country = 'Unknown'
     let city = 'Unknown'
 
-    // Only lookup public IPs
+    // 4️⃣ Try Geo-IP Lookup First
     if (cleanIp !== '127.0.0.1') {
       const geo = geoip.lookup(cleanIp)
       if (geo) {
@@ -212,13 +214,31 @@ export async function createOrUpdateVisitor(
       }
     }
 
-    // 4️⃣ Construct the structured nested object mapped to your Visitor.ts Schema
+    // 5️⃣ 🎯 FALLBACK: Use Timezone string to derive Country Name if country is still unknown
+    const userTimezone = clientMetadata?.timezone
+    if ((country === 'Unknown' || !country) && userTimezone) {
+      const tzData = ct.getTimezone(userTimezone)
+      if (tzData && tzData.countries && tzData.countries.length > 0) {
+        // Grab the primary country match structure mapped to this IANA code
+        const primaryCountryCode = tzData.countries[0]
+        const countryData = ct.getCountry(primaryCountryCode)
+        if (countryData) {
+          country = countryData.name // e.g., converts "Africa/Lagos" -> "Nigeria"
+        }
+      } else if (userTimezone.includes('/')) {
+        // Simple structural fallback parsing if the string contains a slash (e.g., "Europe/London" -> "Europe")
+        const dynamicRegion = userTimezone.split('/')[0]
+        country = dynamicRegion.replace('_', ' ')
+      }
+    }
+
+    // 6️⃣ Build up metadata payload matching your DB Schema representation bounds
     const visitorMetadata = {
       ipAddress: cleanIp,
       userAgent: uaString,
       browser,
       operatingSystem,
-      timezone: clientMetadata?.timezone || 'UTC',
+      timezone: userTimezone || 'UTC',
       language: clientMetadata?.language || 'en',
       screenResolution: clientMetadata?.screenResolution || 'Unknown',
       deviceType,
@@ -228,7 +248,7 @@ export async function createOrUpdateVisitor(
       },
     }
 
-    // 5️⃣ Update document with the complete dataset
+    // 7️⃣ Commit mutations down to your persistence layer
     const visitor = await Visitor.findOneAndUpdate(
       {
         propertyId,
@@ -236,11 +256,9 @@ export async function createOrUpdateVisitor(
       },
       {
         $inc: { pageViews: 1 },
-        $set: { 
+        $set: {
           lastSeen: new Date(),
           metadata: visitorMetadata,
-          // Sync surface parameters if needed
-          currentPage: clientMetadata ? undefined : undefined // Can be mapped to track routes
         },
         $setOnInsert: {
           name: 'Anonymous Visitor',
@@ -256,28 +274,43 @@ export async function createOrUpdateVisitor(
 
     return visitor
   } catch (error) {
-    console.error('[KeilaChat Backend Error] createOrUpdateVisitor failed:', error)
+    console.error(
+      '[KeilaChat Backend Error] createOrUpdateVisitor failed:',
+      error,
+    )
     return null
   }
 }
 
-// 2. Pass the parameters down from your primary orchestration handler:
+// 🎯 Explicitly model incoming payload signature without using 'any'
+interface ClientMetadataPayload {
+  userAgent: string
+  language: string
+  screenResolution: string
+  timezone: string
+}
+
 export async function initializeWidgetSession(
   widgetId: string,
   visitorTrackingId?: string,
   origin?: string,
-  clientMetadata?: any, // 🎯 Receive payload context from controller
-  reqIp?: string
-): Promise<WidgetInitializationResult> {
+  clientMetadata?: ClientMetadataPayload,
+  reqIp?: string,
+): Promise<any> {
+  // Replace 'any' with your core initialization output model signature
   const property = await getPropertyByWidgetId(widgetId)
   const account = await validateAccount(property.accountId.toString())
   await validateProperty(property)
-  await validateWidgetDomain(property, origin) 
+  await validateWidgetDomain(property, origin)
 
   const [onlineOperators, visitor] = await Promise.all([
     getOnlineOperatorCount(property.accountId.toString()),
-    // Forward variables down to creation layers safely
-    createOrUpdateVisitor(property._id.toString(), visitorTrackingId, clientMetadata, reqIp),
+    createOrUpdateVisitor(
+      property._id.toString(),
+      visitorTrackingId,
+      clientMetadata,
+      reqIp,
+    ),
   ])
 
   const isOnline = onlineOperators > 0 && property.settings.onlineStatus
@@ -291,8 +324,6 @@ export async function initializeWidgetSession(
     isOnline,
   }
 }
-
-
 
 /* -------------------------------------------------------------------------- */
 /* Widget Verification                                                        */
