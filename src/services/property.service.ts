@@ -31,6 +31,7 @@ export class PropertyService {
   }
 
   /**
+  /**
    * Update Website Settings
    * Creates the property if it does not already exist.
    */
@@ -55,23 +56,19 @@ export class PropertyService {
     logger.info({ accountId }, 'Updating website settings')
 
     let property = await Property.findOne({ accountId })
-
     const credentials = generatePropertyCredentials()
 
     /* ---------------------------------------------------------------------- */
     /* First setup: create property if it doesn't exist                        */
     /* ---------------------------------------------------------------------- */
-
     if (!property) {
       logger.info({ accountId }, 'No property found. Creating a new property.')
 
       property = await Property.create({
         accountId,
-
         name: data.name,
         domain: data.domain,
         allowedDomains: data.allowedDomains,
-
         widgetId: credentials.widgetId,
         apiKey: credentials.apiKey,
         widgetSettings: {
@@ -80,7 +77,6 @@ export class PropertyService {
           allowVoiceRecordings:
             data.widgetSettings?.allowVoiceRecordings ?? true,
         },
-
         details: {
           category: data.category,
           subCategory: data.subCategory,
@@ -91,65 +87,68 @@ export class PropertyService {
       })
 
       logger.info(
-        {
-          accountId,
-          propertyId: property._id,
-        },
+        { accountId, propertyId: property._id },
         'Property created successfully',
       )
+    } else {
+      /* ---------------------------------------------------------------------- */
+      /* Existing property: update                                               */
+      /* ---------------------------------------------------------------------- */
+      property.name = data.name
+      property.domain = data.domain
+      property.allowedDomains = data.allowedDomains
 
-      return property
+      property.widgetSettings = {
+        launcherPosition:
+          property.widgetSettings?.launcherPosition ?? 'bottom-right',
+        welcomeMessage:
+          property.widgetSettings?.welcomeMessage ?? 'Hi 👋 How can we help?',
+        offlineMessage:
+          property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
+        showAgentPhoto: property.widgetSettings?.showAgentPhoto ?? true,
+        soundEnabled: property.widgetSettings?.soundEnabled ?? true,
+        allowEmoji: property.widgetSettings?.allowEmoji ?? true,
+        allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
+        launcherIcon: property.widgetSettings?.launcherIcon,
+        aiName: data.aiName,
+        allowFileUpload:
+          data.widgetSettings?.allowFileUpload ??
+          property.widgetSettings?.allowFileUpload ??
+          true,
+        allowVoiceRecordings:
+          data.widgetSettings?.allowVoiceRecordings ??
+          property.widgetSettings?.allowVoiceRecordings ??
+          true,
+      }
+
+      property.details = {
+        ...(property.details ?? {}),
+        category: data.category,
+        subCategory: data.subCategory,
+        region: data.region,
+        description: data.description,
+        logoUrl: data.logoUrl,
+      }
+
+      await property.save()
+
+      logger.info(
+        { accountId, propertyId: property._id },
+        'Website settings updated successfully',
+      )
     }
 
     /* ---------------------------------------------------------------------- */
-    /* Existing property: update                                               */
+    /* 🎯 DYNAMIC ADMIN ASSIGNMENT SYNC                                       */
     /* ---------------------------------------------------------------------- */
-
-    property.name = data.name
-    property.domain = data.domain
-    property.allowedDomains = data.allowedDomains
-
-    property.widgetSettings = {
-      launcherPosition:
-        property.widgetSettings?.launcherPosition ?? 'bottom-right',
-      welcomeMessage:
-        property.widgetSettings?.welcomeMessage ?? 'Hi 👋 How can we help?',
-      offlineMessage:
-        property.widgetSettings?.offlineMessage ?? 'Leave us a message.',
-      showAgentPhoto: property.widgetSettings?.showAgentPhoto ?? true,
-      soundEnabled: property.widgetSettings?.soundEnabled ?? true,
-      allowEmoji: property.widgetSettings?.allowEmoji ?? true,
-      allowScreenshots: property.widgetSettings?.allowScreenshots ?? false,
-      launcherIcon: property.widgetSettings?.launcherIcon,
-      aiName: data.aiName,
-      allowFileUpload:
-        data.widgetSettings?.allowFileUpload ??
-        property.widgetSettings?.allowFileUpload ??
-        true,
-      allowVoiceRecordings:
-        data.widgetSettings?.allowVoiceRecordings ??
-        property.widgetSettings?.allowVoiceRecordings ??
-        true,
-    }
-
-    property.details = {
-      ...(property.details ?? {}),
-      category: data.category,
-      subCategory: data.subCategory,
-      region: data.region,
-      description: data.description,
-      logoUrl: data.logoUrl,
-    }
-
-    await property.save()
-
-    logger.info(
-      {
-        accountId,
-        propertyId: property._id,
-      },
-      'Website settings updated successfully',
-    )
+    // Ensure that any admin operators linked to this business account possess
+    // this property reference in their assignment profile array context.
+    await mongoose
+      .model('Operator')
+      .updateMany(
+        { accountId, role: 'admin' },
+        { $addToSet: { assignedProperties: property._id } },
+      )
 
     return property
   }

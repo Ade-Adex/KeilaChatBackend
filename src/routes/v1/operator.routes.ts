@@ -38,7 +38,7 @@ router.post('/invite/accept', acceptInvite)
 router.use(authMiddleware)
 router.use(tenantMiddleware)
 
-router.get('/', rbac('admin', 'supervisor'), getOperators)
+router.get('/', rbac('admin', 'supervisor', 'agent'), getOperators)
 
 router.get('/active', getActiveOperatorsController)
 

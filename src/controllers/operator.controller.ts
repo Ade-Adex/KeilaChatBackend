@@ -28,9 +28,15 @@ export const getProfile = catchAsync(
       return next(new AppError('Unauthorized', 401))
     }
 
-    const operator = await Operator.findById(operatorId).select(
-      '-passwordHash -inviteToken',
-    )
+    // const operator = await Operator.findById(operatorId).select(
+    //   '-passwordHash -inviteToken',
+    // )
+
+
+    const operator = await Operator.findById(operatorId)
+      .select('-passwordHash -inviteToken')
+      .populate('assignedProperties', '_id name domain widgetId')
+    
 
     if (!operator) {
       return next(new AppError('Operator not found', 404))

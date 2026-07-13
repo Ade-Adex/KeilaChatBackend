@@ -101,6 +101,50 @@ export const loginOperator = async (req: Request, res: Response) => {
   })
 }
 
+
+
+
+
+/**
+ * FETCH CURRENT AUTHENTICATED PROFILE DATA CONTEXT
+ */
+export const getMe = async (req: Request, res: Response) => {
+  try {
+    // 1. req.user._id is populated via your requireAuth token middleware context
+    const operatorId = (req as any).user?.userId || (req as any).user?._id
+
+    if (!operatorId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized profile access' })
+    }
+
+    // 2. Query operator with fully populated subproperty configurations
+    const operator = await Operator.findById(operatorId)
+      // .populate('assignedProperties')
+      .select('-passwordHash -resetPasswordToken -resetPasswordExpires')
+      .lean()
+
+    if (!operator) {
+      return res.status(404).json({ success: false, message: 'Operator not found' })
+    }
+
+    // 3. Resolve parent business account parameters
+    const account = await mongoose.model('Account').findById(operator.accountId).lean()
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        account,
+        operator,
+      },
+    })
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Failed to retrieve context data profile',
+    })
+  }
+}
+
 /**
  * FORGOT PASSWORD
  */

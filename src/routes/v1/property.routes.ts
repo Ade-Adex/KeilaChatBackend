@@ -20,7 +20,7 @@ router.use(tenantMiddleware)
 
 router.get('/', getMyProperties)
 
-router.get('/settings', rbac('admin'), getWebsiteSettings)
+router.get('/settings', rbac('admin', 'supervisor', 'agent'), getWebsiteSettings)
 
 router.put('/settings', rbac('admin'), updateWebsiteSettings)
 

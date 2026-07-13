@@ -5,8 +5,42 @@ import Operator from '../models/Operator.js'
 import Visitor from '../models/Visitor.js'
 import Notification from '../models/Notification.js'
 import Message from '../models/Message.js'
+import Property from '../models/Property.js'
+import { AppError } from './appError.js'
+import mongoose from 'mongoose'
 
 export class DashboardService {
+  /**
+   * Resolves website property workspace attributes for the active dashboard session
+   */
+  static async getDashboardContext(propertyId: string, accountId: string) {
+    if (!propertyId || !mongoose.Types.ObjectId.isValid(propertyId)) {
+      throw new AppError(
+        'A valid property context ID parameter is required.',
+        400,
+      )
+    }
+
+    // Load data context without exposing the highly sensitive programmatic write api keys
+    const property = await Property.findOne({
+      _id: propertyId,
+      accountId,
+    })
+      .select('-apiKey')
+      .lean()
+
+    if (!property) {
+      throw new AppError(
+        'The active workspace tracking configuration was not found.',
+        404,
+      )
+    }
+
+    return {
+      property,
+    }
+  }
+
   /*
    ********************************
    * DASHBOARD OVERVIEW
@@ -57,6 +91,20 @@ export class DashboardService {
       }),
     ])
 
+    // Generate last 7 days time-series placeholder array for the chart UI context
+    const chartData = Array.from({ length: 7 }).map((_, index) => {
+      const date = new Date()
+      date.setDate(date.getDate() - (6 - index))
+      return {
+        date: date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+        }),
+        chats: 0,
+        visitors: index === 6 ? totalVisitors : 0,
+      }
+    })
+
     return {
       activeChats,
       queuedChats,
@@ -65,6 +113,7 @@ export class DashboardService {
       onlineVisitors,
       onlineOperators,
       unreadNotifications,
+      chartData, 
     }
   }
 
@@ -147,9 +196,7 @@ export class DashboardService {
 
     return Message.find({
       sessionId: {
-        $in: sessions.map(
-          (s) => s._id,
-        ),
+        $in: sessions.map((s) => s._id),
       },
     })
       .sort({
@@ -181,11 +228,10 @@ export class DashboardService {
    ********************************
    */
   static async getAnalytics(propertyId: string) {
-    const sessions =
-      await ChatSession.find({
-        propertyId,
-        status: 'closed',
-      })
+    const sessions = await ChatSession.find({
+      propertyId,
+      status: 'closed',
+    })
 
     const totalChats = sessions.length
 
@@ -193,10 +239,7 @@ export class DashboardService {
       totalChats === 0
         ? 0
         : sessions.reduce(
-            (sum, session) =>
-              sum +
-              (session.analytics
-                ?.duration ?? 0),
+            (sum, session) => sum + (session.analytics?.duration ?? 0),
             0,
           ) / totalChats
 
@@ -204,11 +247,7 @@ export class DashboardService {
       totalChats === 0
         ? 0
         : sessions.reduce(
-            (sum, session) =>
-              sum +
-              (session.analytics
-                ?.averageReplyTime ??
-                0),
+            (sum, session) => sum + (session.analytics?.averageReplyTime ?? 0),
             0,
           ) / totalChats
 
@@ -224,9 +263,7 @@ export class DashboardService {
    * OPERATOR WORKLOAD
    ********************************
    */
-  static async getOperatorLoad(
-    accountId: string,
-  ) {
+  static async getOperatorLoad(accountId: string) {
     return Operator.find({
       accountId,
     })

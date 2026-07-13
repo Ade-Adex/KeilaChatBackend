@@ -8,9 +8,11 @@ import {
   refreshToken,
   forgotPassword,
   resetPassword,
+  getMe,
 } from '../controllers/auth.controller.js'
 
 import { inviteOperator } from '../controllers/operator.controller.js'
+import { authMiddleware } from '../middleware/auth.middleware.js' 
 
 const router = Router()
 
@@ -19,6 +21,9 @@ router.post('/register', registerTenant)
 router.post('/login', loginOperator)
 router.post('/refresh', refreshToken)
 router.post('/logout', logoutOperator)
+
+// Profile Context Hydration
+router.get('/me', authMiddleware, getMe)
 
 // Password Recovery
 router.post('/forgot-password', forgotPassword)
