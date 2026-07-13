@@ -1,4 +1,6 @@
 // /src/services/session.service.ts
+
+
 import mongoose from 'mongoose'
 import ChatSession from '../models/ChatSession.js'
 import Property from '../models/Property.js'
@@ -15,6 +17,9 @@ interface PopulatedOperatorDoc {
   avatar?: string
 }
 
+const VISITOR_POPULATE_FIELDS =
+  'name email metadata tags notes firstVisitAt unreadMessages currentPage referrer isOnline lastSeen pageViews chatOpened'
+
 export async function getSessionById(sessionId: string) {
   const session = await ChatSession.findById(sessionId)
     .populate({
@@ -25,7 +30,7 @@ export async function getSessionById(sessionId: string) {
         select: 'name',
       },
     })
-    .populate('visitorId', 'name email')
+    .populate('visitorId', VISITOR_POPULATE_FIELDS) 
 
   if (!session) {
     throw new AppError('Chat session not found', 404)
@@ -35,18 +40,15 @@ export async function getSessionById(sessionId: string) {
 }
 
 export async function getActiveSessions(propertyId: string) {
-  return (
-    ChatSession.find({
-      propertyId,
-      status: 'active',
+  return ChatSession.find({
+    propertyId,
+    status: 'active',
+  })
+    .sort({
+      updatedAt: -1,
     })
-      .sort({
-        updatedAt: -1,
-      })
-      // 🎯 FIX: Added 'avatar' field context parsing inside your Active dashboard queries
-      .populate('assignedOperatorId', 'firstName lastName avatar')
-      .populate('visitorId', 'name')
-  )
+    .populate('assignedOperatorId', 'firstName lastName avatar')
+    .populate('visitorId', VISITOR_POPULATE_FIELDS) // 🎯 FIXED
 }
 
 export async function getQueuedSessions(propertyId: string) {
@@ -57,7 +59,7 @@ export async function getQueuedSessions(propertyId: string) {
     .sort({
       createdAt: 1,
     })
-    .populate('visitorId', 'name')
+    .populate('visitorId', VISITOR_POPULATE_FIELDS) // 🎯 FIXED
 }
 
 export async function getOperatorChatHistory(operatorId: string) {
@@ -67,21 +69,18 @@ export async function getOperatorChatHistory(operatorId: string) {
     .sort({
       updatedAt: -1,
     })
-    .populate('visitorId', 'name email')
+    .populate('visitorId', VISITOR_POPULATE_FIELDS) // 🎯 FIXED
 }
 
 export async function getPropertySessions(propertyId: string) {
-  return (
-    ChatSession.find({
-      propertyId,
+  return ChatSession.find({
+    propertyId,
+  })
+    .sort({
+      createdAt: -1,
     })
-      .sort({
-        createdAt: -1,
-      })
-      // 🎯 FIX: Added 'avatar' field context here as well to ensure fallback dashboard consistency
-      .populate('assignedOperatorId', 'firstName lastName avatar')
-      .populate('visitorId', 'name')
-  )
+    .populate('assignedOperatorId', 'firstName lastName avatar')
+    .populate('visitorId', VISITOR_POPULATE_FIELDS) // 🎯 FIXED
 }
 
 export async function getOpenSessionCount(propertyId: string) {
@@ -122,19 +121,18 @@ export async function initiateVisitorSession({
     throw new AppError('Visitor not found', 404)
   }
 
-  // 🎯 FIX: Declare the array using your exact valid status literals.
-  // This explicitly matches Mongoose's internal schema enum signature type tracker.
-  const targetStatuses: ('waiting' | 'queued' | 'active')[] = createNew
-    ? ['waiting', 'queued', 'active']
-    : ['waiting', 'queued', 'active']
+  const targetStatuses: ('waiting' | 'queued' | 'active')[] = [
+    'waiting',
+    'queued',
+    'active',
+  ]
 
   let session = await ChatSession.findOne({
     propertyId: property._id,
     visitorId: visitor._id,
-    status: { $in: targetStatuses }, // 🛡️ Clean, Type-safe, and compile warning free!
+    status: { $in: targetStatuses },
   }).lean()
 
-  // If no open session exists, or force reset is active, spin up a brand new one
   if (!session || createNew) {
     session = await ChatSession.create({
       propertyId: property._id,
@@ -145,7 +143,6 @@ export async function initiateVisitorSession({
       lastActivityAt: new Date(),
     }).then((doc) => doc.toObject())
 
-    // --- NEW ACCOUNT WORKSPACE ECOSYSTEM CHAT UPDATE ---
     await mongoose
       .model('Account')
       .updateOne(

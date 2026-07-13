@@ -285,6 +285,7 @@ export async function initializeChat(
   }
 }
 
+
 export async function closeChat(
   sessionId: string,
   closedBy: 'visitor' | 'operator' | 'system',

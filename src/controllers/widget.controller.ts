@@ -15,19 +15,43 @@ import {
 /* Initialize Widget                                                          */
 /* -------------------------------------------------------------------------- */
 
+// export const initializeWidget = catchAsync(
+//   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+//     const { widgetId, visitorTrackingId } = req.body
+
+//     if (!widgetId) {
+//       return next(new AppError('Widget configuration ID is required.', 400))
+//     }
+
+//     const origin =
+//       (req.headers.origin as string) || (req.headers.referer as string)
+
+//     const { property, onlineOperators, visitor } =
+//       await initializeWidgetSession(widgetId, visitorTrackingId, origin)
+
+//     res
+//       .status(200)
+//       .json(buildWidgetResponse(property, onlineOperators, visitor))
+//   },
+// )
+
+
+
 export const initializeWidget = catchAsync(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    const { widgetId, visitorTrackingId } = req.body
+    // Collect the explicit metadata block passed down from the embed script
+    const { widgetId, visitorTrackingId, metadata } = req.body
 
     if (!widgetId) {
       return next(new AppError('Widget configuration ID is required.', 400))
     }
 
-    const origin =
-      (req.headers.origin as string) || (req.headers.referer as string)
+    const origin = (req.headers.origin as string) || (req.headers.referer as string)
+    const clientIp = req.ip || req.headers['x-forwarded-for'] as string;
 
+    // Forward telemetry datasets into our updated service parameters
     const { property, onlineOperators, visitor } =
-      await initializeWidgetSession(widgetId, visitorTrackingId, origin)
+      await initializeWidgetSession(widgetId, visitorTrackingId, origin, metadata, clientIp)
 
     res
       .status(200)

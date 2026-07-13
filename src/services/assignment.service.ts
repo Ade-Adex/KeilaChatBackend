@@ -10,7 +10,6 @@ export class AssignmentService {
    * Assign operator to session safely using the correct account reference
    */
   static async assignOperatorToSession(propertyId: string, sessionId: string) {
-    // 🎯 FIX: Fetch the property first to extract its parent accountId
     const propertyDoc = await Property.findById(propertyId)
       .select('accountId')
       .lean()
@@ -18,20 +17,11 @@ export class AssignmentService {
       return null
     }
 
-    // 🎯 FIX: Pass the correct accountId string instead of the propertyId string
     const operators = await getAvailableOperators(
       propertyDoc.accountId.toString(),
     )
 
     const operator = operators.at(0)
-
-    //  logger.info({
-    //    msg: 'Debugging human handoff allocation diagnostics',
-    //    operators: operator,
-    //    sessionId: sessionId,
-    //    propertyId: propertyId,
-    //    propertyDoc: propertyDoc,
-    //  })
 
     if (!operator) {
       return null
@@ -46,13 +36,16 @@ export class AssignmentService {
      ? now.getTime() - new Date(currentSession.createdAt).getTime()
      : 0
 
-   await ChatSession.findByIdAndUpdate(sessionId, {
-     assignedOperatorId: operator._id,
-     status: 'active',
-     operatorJoinedAt: now,
-     lastActivityAt: now,
-     waitTimeMs: waitTimeMs,
-   })
+  await ChatSession.findByIdAndUpdate(sessionId, {
+    assignedOperatorId: operator._id,
+    status: 'active',
+    operatorJoinedAt: now,
+    lastActivityAt: now,
+    waitTimeMs: waitTimeMs,
+  }).populate(
+    'visitorId',
+    'name email metadata tags notes firstVisitAt unreadMessages currentPage referrer isOnline lastSeen pageViews chatOpened',
+  )
 
    await Operator.updateOne(
      { _id: operator._id },

@@ -123,18 +123,17 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                   session.status === 'waiting' ||
                   !session.assignedOperatorId)
               ) {
+                const now = new Date()
+                const waitTimeMs =
+                  now.getTime() - new Date(session.createdAt).getTime()
 
-               const now = new Date()
-               const waitTimeMs =
-                 now.getTime() - new Date(session.createdAt).getTime()
-
-               // 🎯 FIXED: Atomic update that tracks assignment time, wait time, and increments workload history!
-               await ChatSession.findByIdAndUpdate(data.sessionId, {
-                 status: 'active',
-                 assignedOperatorId: data.operatorId,
-                 operatorJoinedAt: now,
-                 waitTimeMs: waitTimeMs,
-               })
+                // 🎯 FIXED: Atomic update that tracks assignment time, wait time, and increments workload history!
+                await ChatSession.findByIdAndUpdate(data.sessionId, {
+                  status: 'active',
+                  assignedOperatorId: data.operatorId,
+                  operatorJoinedAt: now,
+                  waitTimeMs: waitTimeMs,
+                })
 
                 await Operator.updateOne(
                   { _id: data.operatorId },
@@ -166,34 +165,6 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                   avatar: operatorProfile.avatar || '',
                 })
               }
-
-              // const messages = (
-              //   await Message.find({
-              //     sessionId: data.sessionId,
-              //   })
-              //     .sort({
-              //       createdAt: 1,
-              //     })
-              //     .lean()
-              // ).map((message: any) => {
-              //   try {
-              //     return {
-              //       ...message,
-              //       messageText:
-              //         message.encryptedMessage &&
-              //         encryptionService.isEncrypted(message.encryptedMessage)
-              //           ? encryptionService.decrypt(message.encryptedMessage)
-              //           : '',
-              //     }
-              //   } catch (error) {
-              //     logger.error(error, 'Failed to decrypt chat history message')
-
-              //     return {
-              //       ...message,
-              //       messageText: '',
-              //     }
-              //   }
-              // })
 
               const messages = (
                 await Message.find({
@@ -423,7 +394,7 @@ import { encryptionService } from '../lib/security/encryption.service.js'
 
         /*
          ****************************************
-         * 🎯 NEW: CHAT TRANSFER AGENT PIPELINE
+         * 🎯 CHAT TRANSFER AGENT PIPELINE (FIXED)
          ****************************************
          */
         socket.on(
@@ -453,6 +424,7 @@ import { encryptionService } from '../lib/security/encryption.service.js'
               if (!newOperator) return
 
               // 3. Update the database session assignment using clean atomic adjustments
+              // 🎯 FIXED: Chains .populate() to include all telemetry metrics for the new operator layout window
               const updatedSession = await ChatSession.findByIdAndUpdate(
                 data.sessionId,
                 {
@@ -461,6 +433,9 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                   status: 'active',
                 },
                 { returnDocument: 'after' },
+              ).populate(
+                'visitorId',
+                'name email metadata tags notes firstVisitAt unreadMessages currentPage referrer isOnline lastSeen pageViews chatOpened',
               )
 
               if (!updatedSession) return
@@ -539,6 +514,7 @@ import { encryptionService } from '../lib/security/encryption.service.js'
                   propertyId: updatedSession.propertyId,
                   operatorId: data.targetOperatorId,
                   operator: newOperator,
+                  session: updatedSession, 
                 })
 
               // 6. Notify the property dashboards across all operators to dynamically reposition sidebars
@@ -555,6 +531,7 @@ import { encryptionService } from '../lib/security/encryption.service.js'
             }
           },
         )
+
 
         /* -------------------------------------------------- */
         /* DISCONNECT STATE                                   */

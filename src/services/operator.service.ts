@@ -13,6 +13,11 @@ import { hashPassword } from '../utils/auth/password.js'
 import { Types } from 'mongoose'
 import Property from '../models/Property.js'
 
+
+const VISITOR_POPULATE_FIELDS =
+  'name email metadata tags notes firstVisitAt unreadMessages currentPage referrer isOnline lastSeen pageViews chatOpened'
+
+
 export async function getOperatorsByAccount(accountId: string) {
   return Operator.find({
     accountId: new Types.ObjectId(accountId),
@@ -180,7 +185,7 @@ export async function getOperatorActiveSessions(operatorId: string) {
     .sort({
       updatedAt: -1,
     })
-    .populate('visitorId', 'name')
+    .populate('visitorId', VISITOR_POPULATE_FIELDS) 
     .lean()
 }
 

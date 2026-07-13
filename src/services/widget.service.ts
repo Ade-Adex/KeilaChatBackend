@@ -153,23 +153,147 @@ export async function getOnlineOperatorCount(accountId: string) {
   })
 }
 
-/* -------------------------------------------------------------------------- */
-/* Visitor Management                                                         */
-/* -------------------------------------------------------------------------- */
+// /* -------------------------------------------------------------------------- */
+// /* Visitor Management                                                         */
+// /* -------------------------------------------------------------------------- */
 
 
+// export async function createOrUpdateVisitor(
+//   propertyId: string,
+//   visitorTrackingId?: string,
+// ) {
+//   try {
+//     // 🎯 Use the clean utility helper if the tracking ID is invalid or missing
+//     const trackingIdToUse =
+//       visitorTrackingId &&
+//       visitorTrackingId !== 'undefined' &&
+//       visitorTrackingId.trim() !== ''
+//         ? visitorTrackingId
+//         : generateVisitorTrackingId()
+
+//     const visitor = await Visitor.findOneAndUpdate(
+//       {
+//         propertyId,
+//         visitorTrackingId: trackingIdToUse,
+//       },
+//       {
+//         $inc: { pageViews: 1 },
+//         $set: { lastSeen: new Date() },
+//         $setOnInsert: {
+//           name: 'Anonymous Visitor',
+//           createdAt: new Date(),
+//         },
+//       },
+//       {
+//         upsert: true,
+//         returnDocument: 'after',
+//         lean: true,
+//       },
+//     )
+
+//     return visitor
+//   } catch (error) {
+//     console.error(
+//       '[KeilaChat Backend Error] createOrUpdateVisitor failed:',
+//       error,
+//     )
+//     return null
+//   }
+// }
+// /* -------------------------------------------------------------------------- */
+// /* Widget Initialization                                                      */
+// /* -------------------------------------------------------------------------- */
+
+// export async function initializeWidgetSession(
+//   widgetId: string,
+//   visitorTrackingId?: string,
+//   origin?: string,
+// ): Promise<WidgetInitializationResult> {
+//   /* ------------------------------------ */
+//   /* Property                             */
+//   /* ------------------------------------ */
+
+//   const property = await getPropertyByWidgetId(widgetId)
+
+//   /* ------------------------------------ */
+//   /* Account                              */
+//   /* ------------------------------------ */
+
+//   const account = await validateAccount(property.accountId.toString())
+
+//   /* ------------------------------------ */
+//   /* Property Validation                  */
+//   /* ------------------------------------ */
+
+//   await validateProperty(property)
+
+//   /* ------------------------------------ */
+//   /* Domain Validation                    */
+//   /* ------------------------------------ */
+
+//   await validateWidgetDomain(property, origin)
+
+//   /* ------------------------------------ */
+//   /* Parallel Operations                  */
+//   /* ------------------------------------ */
+
+//   const [onlineOperators, visitor] = await Promise.all([
+//     getOnlineOperatorCount(property.accountId.toString()),
+
+//     createOrUpdateVisitor(property._id.toString(), visitorTrackingId),
+//   ])
+
+//   const isOnline = onlineOperators > 0 && property.settings.onlineStatus
+
+//   return {
+//     property,
+//     account,
+//     onlineOperators,
+//     visitor,
+
+//     widgetSettings: property.widgetSettings,
+
+//     isOnline,
+//   }
+// }
+
+
+
+
+// 1. Update the arguments of createOrUpdateVisitor to receive the incoming metadata payload and req object
 export async function createOrUpdateVisitor(
   propertyId: string,
   visitorTrackingId?: string,
+  clientMetadata?: any,
+  reqIp?: string
 ) {
   try {
-    // 🎯 Use the clean utility helper if the tracking ID is invalid or missing
     const trackingIdToUse =
-      visitorTrackingId &&
-      visitorTrackingId !== 'undefined' &&
-      visitorTrackingId.trim() !== ''
+      visitorTrackingId && visitorTrackingId !== 'undefined' && visitorTrackingId.trim() !== ''
         ? visitorTrackingId
         : generateVisitorTrackingId()
+
+    // Base device profiling logic from User-Agent string
+    const ua = clientMetadata?.userAgent || '';
+    let deviceType = 'desktop';
+    if (/Mobi|Android|iPhone/i.test(ua)) deviceType = 'mobile';
+    else if (/Tablet|iPad/i.test(ua)) deviceType = 'tablet';
+
+    // Construct the structured nested object blueprint mapped to your Visitor.ts Schema
+    const visitorMetadata = {
+      ipAddress: reqIp || '127.0.0.1',
+      userAgent: ua,
+      browser: clientMetadata?.userAgent ? 'Detected Browser' : undefined, // Optional: Use an agent parser package here
+      operatingSystem: clientMetadata?.userAgent ? 'Detected OS' : undefined,
+      timezone: clientMetadata?.timezone || 'UTC',
+      language: clientMetadata?.language || 'en',
+      screenResolution: clientMetadata?.screenResolution || 'Unknown',
+      deviceType: deviceType,
+      location: {
+        country: 'Unknown', // Optional: Wire up a lookup database or CDN geographical headers here
+        city: 'Unknown'
+      }
+    };
 
     const visitor = await Visitor.findOneAndUpdate(
       {
@@ -178,7 +302,10 @@ export async function createOrUpdateVisitor(
       },
       {
         $inc: { pageViews: 1 },
-        $set: { lastSeen: new Date() },
+        $set: { 
+          lastSeen: new Date(),
+          metadata: visitorMetadata 
+        },
         $setOnInsert: {
           name: 'Anonymous Visitor',
           createdAt: new Date(),
@@ -193,54 +320,28 @@ export async function createOrUpdateVisitor(
 
     return visitor
   } catch (error) {
-    console.error(
-      '[KeilaChat Backend Error] createOrUpdateVisitor failed:',
-      error,
-    )
+    console.error('[KeilaChat Backend Error] createOrUpdateVisitor failed:', error)
     return null
   }
 }
-/* -------------------------------------------------------------------------- */
-/* Widget Initialization                                                      */
-/* -------------------------------------------------------------------------- */
 
+// 2. Pass the parameters down from your primary orchestration handler:
 export async function initializeWidgetSession(
   widgetId: string,
   visitorTrackingId?: string,
   origin?: string,
+  clientMetadata?: any, // 🎯 Receive payload context from controller
+  reqIp?: string
 ): Promise<WidgetInitializationResult> {
-  /* ------------------------------------ */
-  /* Property                             */
-  /* ------------------------------------ */
-
   const property = await getPropertyByWidgetId(widgetId)
-
-  /* ------------------------------------ */
-  /* Account                              */
-  /* ------------------------------------ */
-
   const account = await validateAccount(property.accountId.toString())
-
-  /* ------------------------------------ */
-  /* Property Validation                  */
-  /* ------------------------------------ */
-
   await validateProperty(property)
-
-  /* ------------------------------------ */
-  /* Domain Validation                    */
-  /* ------------------------------------ */
-
-  await validateWidgetDomain(property, origin)
-
-  /* ------------------------------------ */
-  /* Parallel Operations                  */
-  /* ------------------------------------ */
+  await validateWidgetDomain(property, origin) 
 
   const [onlineOperators, visitor] = await Promise.all([
     getOnlineOperatorCount(property.accountId.toString()),
-
-    createOrUpdateVisitor(property._id.toString(), visitorTrackingId),
+    // Forward variables down to creation layers safely
+    createOrUpdateVisitor(property._id.toString(), visitorTrackingId, clientMetadata, reqIp),
   ])
 
   const isOnline = onlineOperators > 0 && property.settings.onlineStatus
@@ -250,12 +351,12 @@ export async function initializeWidgetSession(
     account,
     onlineOperators,
     visitor,
-
     widgetSettings: property.widgetSettings,
-
     isOnline,
   }
 }
+
+
 
 /* -------------------------------------------------------------------------- */
 /* Widget Verification                                                        */
