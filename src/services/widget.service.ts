@@ -9,6 +9,10 @@ import { AppError } from './appError.js'
 import { normalizeDomain } from '../utils/domain.utils.js'
 import { generateVisitorTrackingId } from '../utils/visitor/identity.js'
 
+
+import useragent from 'useragent'
+import geoip from 'geoip-lite'
+
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -153,148 +157,78 @@ export async function getOnlineOperatorCount(accountId: string) {
   })
 }
 
-// /* -------------------------------------------------------------------------- */
-// /* Visitor Management                                                         */
-// /* -------------------------------------------------------------------------- */
 
-
-// export async function createOrUpdateVisitor(
-//   propertyId: string,
-//   visitorTrackingId?: string,
-// ) {
-//   try {
-//     // 🎯 Use the clean utility helper if the tracking ID is invalid or missing
-//     const trackingIdToUse =
-//       visitorTrackingId &&
-//       visitorTrackingId !== 'undefined' &&
-//       visitorTrackingId.trim() !== ''
-//         ? visitorTrackingId
-//         : generateVisitorTrackingId()
-
-//     const visitor = await Visitor.findOneAndUpdate(
-//       {
-//         propertyId,
-//         visitorTrackingId: trackingIdToUse,
-//       },
-//       {
-//         $inc: { pageViews: 1 },
-//         $set: { lastSeen: new Date() },
-//         $setOnInsert: {
-//           name: 'Anonymous Visitor',
-//           createdAt: new Date(),
-//         },
-//       },
-//       {
-//         upsert: true,
-//         returnDocument: 'after',
-//         lean: true,
-//       },
-//     )
-
-//     return visitor
-//   } catch (error) {
-//     console.error(
-//       '[KeilaChat Backend Error] createOrUpdateVisitor failed:',
-//       error,
-//     )
-//     return null
-//   }
-// }
-// /* -------------------------------------------------------------------------- */
-// /* Widget Initialization                                                      */
-// /* -------------------------------------------------------------------------- */
-
-// export async function initializeWidgetSession(
-//   widgetId: string,
-//   visitorTrackingId?: string,
-//   origin?: string,
-// ): Promise<WidgetInitializationResult> {
-//   /* ------------------------------------ */
-//   /* Property                             */
-//   /* ------------------------------------ */
-
-//   const property = await getPropertyByWidgetId(widgetId)
-
-//   /* ------------------------------------ */
-//   /* Account                              */
-//   /* ------------------------------------ */
-
-//   const account = await validateAccount(property.accountId.toString())
-
-//   /* ------------------------------------ */
-//   /* Property Validation                  */
-//   /* ------------------------------------ */
-
-//   await validateProperty(property)
-
-//   /* ------------------------------------ */
-//   /* Domain Validation                    */
-//   /* ------------------------------------ */
-
-//   await validateWidgetDomain(property, origin)
-
-//   /* ------------------------------------ */
-//   /* Parallel Operations                  */
-//   /* ------------------------------------ */
-
-//   const [onlineOperators, visitor] = await Promise.all([
-//     getOnlineOperatorCount(property.accountId.toString()),
-
-//     createOrUpdateVisitor(property._id.toString(), visitorTrackingId),
-//   ])
-
-//   const isOnline = onlineOperators > 0 && property.settings.onlineStatus
-
-//   return {
-//     property,
-//     account,
-//     onlineOperators,
-//     visitor,
-
-//     widgetSettings: property.widgetSettings,
-
-//     isOnline,
-//   }
-// }
-
-
-
-
-// 1. Update the arguments of createOrUpdateVisitor to receive the incoming metadata payload and req object
 export async function createOrUpdateVisitor(
   propertyId: string,
   visitorTrackingId?: string,
-  clientMetadata?: any,
+  clientMetadata?: {
+    userAgent: string
+    language: string
+    screenResolution: string
+    timezone: string
+  },
   reqIp?: string
 ) {
   try {
     const trackingIdToUse =
-      visitorTrackingId && visitorTrackingId !== 'undefined' && visitorTrackingId.trim() !== ''
+      visitorTrackingId &&
+      visitorTrackingId !== 'undefined' &&
+      visitorTrackingId.trim() !== ''
         ? visitorTrackingId
         : generateVisitorTrackingId()
 
-    // Base device profiling logic from User-Agent string
-    const ua = clientMetadata?.userAgent || '';
-    let deviceType = 'desktop';
-    if (/Mobi|Android|iPhone/i.test(ua)) deviceType = 'mobile';
-    else if (/Tablet|iPad/i.test(ua)) deviceType = 'tablet';
+    const uaString = clientMetadata?.userAgent || ''
+    
+    // 1️⃣ Parse User-Agent using the package
+    const agent = useragent.parse(uaString)
+    const browser = agent.toAgent() // e.g., "Chrome 124.0.0"
+    const operatingSystem = agent.os.toString() // e.g., "Windows 11"
 
-    // Construct the structured nested object blueprint mapped to your Visitor.ts Schema
+    // 2️⃣ Device classification logic
+    let deviceType: 'desktop' | 'mobile' | 'tablet' = 'desktop'
+    if (/Mobi|Android|iPhone/i.test(uaString)) {
+      deviceType = 'mobile'
+    } else if (/Tablet|iPad/i.test(uaString)) {
+      deviceType = 'tablet'
+    }
+
+    // 3️⃣ Clean Local IP Addresses for GeoIP and lookup geo-data
+    let cleanIp = reqIp || '127.0.0.1'
+    if (cleanIp === '::1' || cleanIp === '::ffff:127.0.0.1') {
+      cleanIp = '127.0.0.1'
+    } else if (cleanIp.startsWith('::ffff:')) {
+      cleanIp = cleanIp.replace('::ffff:', '')
+    }
+
+    let country = 'Unknown'
+    let city = 'Unknown'
+
+    // Only lookup public IPs
+    if (cleanIp !== '127.0.0.1') {
+      const geo = geoip.lookup(cleanIp)
+      if (geo) {
+        country = geo.country || 'Unknown'
+        city = geo.city || 'Unknown'
+      }
+    }
+
+    // 4️⃣ Construct the structured nested object mapped to your Visitor.ts Schema
     const visitorMetadata = {
-      ipAddress: reqIp || '127.0.0.1',
-      userAgent: ua,
-      browser: clientMetadata?.userAgent ? 'Detected Browser' : undefined, // Optional: Use an agent parser package here
-      operatingSystem: clientMetadata?.userAgent ? 'Detected OS' : undefined,
+      ipAddress: cleanIp,
+      userAgent: uaString,
+      browser,
+      operatingSystem,
       timezone: clientMetadata?.timezone || 'UTC',
       language: clientMetadata?.language || 'en',
       screenResolution: clientMetadata?.screenResolution || 'Unknown',
-      deviceType: deviceType,
+      deviceType,
       location: {
-        country: 'Unknown', // Optional: Wire up a lookup database or CDN geographical headers here
-        city: 'Unknown'
-      }
-    };
+        country,
+        city,
+      },
+    }
 
+    // 5️⃣ Update document with the complete dataset
     const visitor = await Visitor.findOneAndUpdate(
       {
         propertyId,
@@ -304,11 +238,13 @@ export async function createOrUpdateVisitor(
         $inc: { pageViews: 1 },
         $set: { 
           lastSeen: new Date(),
-          metadata: visitorMetadata 
+          metadata: visitorMetadata,
+          // Sync surface parameters if needed
+          currentPage: clientMetadata ? undefined : undefined // Can be mapped to track routes
         },
         $setOnInsert: {
           name: 'Anonymous Visitor',
-          createdAt: new Date(),
+          firstVisitAt: new Date(),
         },
       },
       {
