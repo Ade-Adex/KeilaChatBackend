@@ -264,10 +264,10 @@ export const refreshToken = async (req: Request, res: Response) => {
 
   return res.status(200).json({
     success: true,
-    data: {
-      account,
-      operator,
-    },
+    // data: {
+    //   account,
+    //   operator,
+    // },
   })
 }
 
