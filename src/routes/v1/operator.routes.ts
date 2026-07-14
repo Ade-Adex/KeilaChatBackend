@@ -9,7 +9,7 @@ import { rbac } from '../../middleware/rbac.middleware.js'
 import {
   getOperators,
   inviteOperator,
-  getProfile,
+  // getProfile,
   updateProfile,
   verifyInvite,
   acceptInvite,
@@ -44,7 +44,7 @@ router.get('/active', getActiveOperatorsController)
 
 router.post('/invite', rbac('admin'), inviteOperator)
 
-router.get('/profile', getProfile)
+// router.get('/profile', getProfile)
 
 router.put('/profile', updateProfile)
 

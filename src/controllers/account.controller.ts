@@ -7,30 +7,6 @@ import Operator from '../models/Operator.js'
 import { AppError } from '../services/appError.js'
 import type { AuthRequest } from '../middleware/auth.middleware.js'
 
-/* -------------------------------------------------------------------------- */
-/*                             GET WORKSPACE                                 */
-/* -------------------------------------------------------------------------- */
-
-export const getWorkspace = catchAsync(async (req: Request, res: Response) => {
-  const accountId = (req as any).user?.accountId
-
-  if (!accountId) {
-    throw new AppError('Unauthorized workspace access', 401)
-  }
-
-  const account = await Account.findById(accountId)
-
-  if (!account) {
-    throw new AppError('Workspace not found', 404)
-  }
-
-  res.status(200).json({
-    success: true,
-    data: {
-      account,
-    },
-  })
-})
 
 /* -------------------------------------------------------------------------- */
 /*                            UPDATE WORKSPACE                               */

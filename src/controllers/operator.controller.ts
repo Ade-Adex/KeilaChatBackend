@@ -16,43 +16,6 @@ import {
   getActiveOperatorsService,
 } from '../services/operator.service.js'
 
-/* -------------------------------------------------------------------------- */
-/*                               GET PROFILE                                  */
-/* -------------------------------------------------------------------------- */
-
-export const getProfile = catchAsync(
-  async (req: AuthRequest, res: Response, next: NextFunction) => {
-    const operatorId = req.user?.userId
-
-    if (!operatorId) {
-      return next(new AppError('Unauthorized', 401))
-    }
-
-    // const operator = await Operator.findById(operatorId).select(
-    //   '-passwordHash -inviteToken',
-    // )
-
-
-    const operator = await Operator.findById(operatorId)
-      .select('-passwordHash -inviteToken')
-      .populate('assignedProperties', '_id name domain widgetId')
-    
-
-    if (!operator) {
-      return next(new AppError('Operator not found', 404))
-    }
-
-    const account = await Account.findById(operator.accountId)
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        operator,
-        account,
-      },
-    })
-  },
-)
 
 /* -------------------------------------------------------------------------- */
 /*                             UPDATE PROFILE                                 */
