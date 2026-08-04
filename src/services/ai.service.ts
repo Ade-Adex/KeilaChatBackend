@@ -524,4 +524,41 @@ export class AIService {
       )
     }
   }
+
+  static shouldEscalate(confidence: number, threshold = 0.8) {
+    return confidence < threshold
+  }
+
+  static async updateSessionAutomationState(
+    sessionId: string,
+    aiEnabled: boolean,
+  ) {
+    const session = await ChatSession.findById(sessionId)
+    if (!session) {
+      throw new AppError('Target chat session could not be located.', 404)
+    }
+
+    session.aiEnabled = aiEnabled
+    if (!aiEnabled) {
+      session.aiHandled = false
+      if (!session.assignedOperatorId) {
+        session.status = 'queued'
+      }
+    } else {
+      session.aiEscalated = false
+    }
+
+    await session.save()
+    EventService.emitToProperty(
+      session.propertyId.toString(),
+      'dashboard_refresh_request',
+      {},
+    )
+
+    return {
+      sessionId: session._id,
+      aiEnabled: session.aiEnabled,
+      status: session.status,
+    }
+  }
 }
