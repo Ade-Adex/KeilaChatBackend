@@ -705,7 +705,6 @@ export class AIService {
         )
       }
 
-
       /* ========================================================================== */
       /* 🎯 HYBRID KNOWLEDGE RETRIEVAL (FAQ KB + CRAWLED PAGES)                    */
       /* ========================================================================== */
@@ -713,16 +712,14 @@ export class AIService {
         '',
         propertyId,
       )
-
-      // Adjusted default threshold: Cosine similarity for short text typically scores between 0.35 - 0.55
-      const threshold = settings?.confidenceThreshold ?? 0.38
+      const threshold = settings?.confidenceThreshold ?? 0.35
 
       const queryEmbedding: number[] = await createEmbedding(cleanInput)
 
-      // 1️⃣ LOAD ALL ENABLED FAQS DIRECTLY TO BYPASS INTENT FILTERS
+      // 1️⃣ LOAD ALL ENABLED FAQS FIRST
       const fullKb = await KnowledgeBaseService.getKnowledgeBase('', propertyId)
 
-      let knowledge =
+      const knowledge =
         fullKb?.faqs?.filter((faq: any) => faq.enabled !== false) || []
 
       let bestFaqMatch: any = null
@@ -730,7 +727,6 @@ export class AIService {
       if (knowledge.length > 0) {
         const ranked = await Promise.all(
           knowledge.map(async (item: any) => {
-            // Clean and validate embedding array
             const hasEmbedding =
               Array.isArray(item.embedding) && item.embedding.length > 0
 
@@ -742,29 +738,30 @@ export class AIService {
               )
             }
 
-            // Keyword & Direct Text Matching
+            // Keyword & Text String Comparison
             const keywordScore = scoreQuestion(cleanInput, item.keywords ?? [])
             const normalizedKeyword = Math.min(keywordScore / 50, 1)
 
-            // Direct Question Text Match (Fallback if embeddings are missing/low)
-            const directQuestionMatch =
-              item.question &&
-              normalizeInput(item.question).includes(cleanInput)
-                ? 0.8
-                : 0
+            // Direct String Matching on Question & Answer Text
+            const cleanQuestion = item.question
+              ? normalizeInput(item.question)
+              : ''
+            const isExactOrPartialMatch =
+              cleanQuestion.includes(cleanInput) ||
+              cleanInput.includes(cleanQuestion)
+            const textMatchBonus = isExactOrPartialMatch ? 0.8 : 0
 
-            // Calculate confidence (Uses direct match if embedding is missing)
+            // Combine scores with high weight on direct text & semantic match
             const confidence = hasEmbedding
-              ? semanticScore * 0.7 +
+              ? semanticScore * 0.5 +
                 normalizedKeyword * 0.2 +
-                directQuestionMatch * 0.1
-              : directQuestionMatch * 0.7 + normalizedKeyword * 0.3
+                textMatchBonus * 0.3
+              : textMatchBonus * 0.7 + normalizedKeyword * 0.3
 
             return { ...item, semanticScore, confidence }
           }),
         )
 
-        // Sort by confidence high-to-low
         ranked.sort((a, b) => b.confidence - a.confidence)
 
         if (ranked[0] && ranked[0].confidence > 0) {
@@ -772,23 +769,12 @@ export class AIService {
         }
       }
 
-      // 2️⃣ SEARCH CRAWLED WEB CONTENT
-      const webFallback = await KnowledgeBaseService.searchWebContextFallback(
-        propertyId,
-        cleanInput,
-        queryEmbedding,
-      )
-
-      // 3️⃣ BEST-MATCH ARBITRATION (FAQ VS CRAWLED CONTENT)
       const faqConfidence = bestFaqMatch?.confidence ?? 0
-      const webConfidence = webFallback?.confidenceScore ?? 0
 
-      // Case A: FAQ Match passes threshold
-      if (
-        bestFaqMatch &&
-        faqConfidence >= threshold &&
-        faqConfidence >= webConfidence
-      ) {
+      // 🎯 RULE 1: PRIORITY TO MANUAL FAQS
+      // If a manual FAQ meets the minimum confidence threshold, return it IMMEDIATELY
+      // without letting crawled website chunks override it.
+      if (bestFaqMatch && faqConfidence >= threshold) {
         setMemory(sessionId, {
           lastQuestion: message,
           lastAnswer: bestFaqMatch.answer,
@@ -813,8 +799,16 @@ export class AIService {
         return createResponse(bestFaqMatch.answer, faqConfidence, false)
       }
 
-      // Case B: Web Content Match passes lower threshold
-      if (webFallback?.matched && webConfidence >= 0.35) {
+      // 2️⃣ CRAWLED WEB CONTENT FALLBACK (Only called if no FAQ matched)
+      const webFallback = await KnowledgeBaseService.searchWebContextFallback(
+        propertyId,
+        cleanInput,
+        queryEmbedding,
+      )
+
+      const webConfidence = webFallback?.confidenceScore ?? 0
+
+      if (webFallback?.matched && webConfidence >= 0.4) {
         setMemory(sessionId, {
           lastQuestion: message,
           lastAnswer: webFallback.answer,
