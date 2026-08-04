@@ -157,6 +157,213 @@ export class MessagePipeline {
       }
     }
 
+
+
+    //  /* ****************************************
+    //  * STEP 4: AI Routing & Triage (WITH CRAWLED & KNOWLEDGEBASE CONTEXT)
+    //  * **************************************** */
+    // if (senderType === 'visitor') {
+    //   if (session.aiEnabled && !session.assignedOperatorId) {
+    //     const cleanText = (messageText || '').toLowerCase().trim()
+
+    //     // 1️⃣ Check for explicit human matching patterns
+    //     const isExplicitCommand =
+    //       cleanText.includes('transfer') ||
+    //       cleanText.includes('agent') ||
+    //       cleanText.includes('human') ||
+    //       cleanText.includes('operator') ||
+    //       cleanText.includes('speak to someone')
+
+    //     // 2️⃣ Check for casual confirmation phrases
+    //     const isCasualConfirmation = [
+    //       'yes',
+    //       'y',
+    //       'ok',
+    //       'okay',
+    //       'yeah',
+    //       'sure',
+    //     ].includes(cleanText)
+
+    //     // Cache the initial status before any mutations take place
+    //     const initialSessionStatus = session.status
+
+    //     const shouldTriggerTransfer =
+    //       initialSessionStatus === 'waiting' && isCasualConfirmation
+
+    //     /* --- SUB-ROUTE A: HUMAN TRANSFER REQUEST --- */
+    //     if (shouldTriggerTransfer) {
+    //       const propertyDoc = await Property.findById(session.propertyId)
+    //         .select('accountId')
+    //         .lean()
+
+    //       const accountIdStr = propertyDoc?.accountId
+    //         ? propertyDoc.accountId.toString()
+    //         : ''
+    //       const availableOperators = await getAvailableOperators(accountIdStr)
+
+    //       if (
+    //         availableOperators &&
+    //         availableOperators.length > 0 &&
+    //         availableOperators[0]
+    //       ) {
+    //         // --- SUCCESS: OPERATOR IS ONLINE AND AVAILABLE ---
+    //         const targetOperator = availableOperators[0]
+    //         const targetOperatorId = targetOperator._id.toString()
+
+    //         const isAlreadyAssigned =
+    //           (session.assignedOperatorId as any)?.toString() ===
+    //           targetOperatorId
+
+    //         session.aiEnabled = false
+    //         session.aiEscalated = true
+    //         session.status = 'active'
+    //         session.assignedOperatorId = new Types.ObjectId(targetOperatorId)
+    //         await session.save()
+
+    //         if (!isAlreadyAssigned) {
+    //           await Operator.updateOne(
+    //             { _id: targetOperatorId },
+    //             { $inc: { activeChatsCount: 1 } },
+    //           )
+    //         }
+
+    //         const transferText =
+    //           `Chat was transferred from AI to ${targetOperator.firstName || ''} ${targetOperator.lastName || ''}`.trim()
+
+    //         const systemNotice = await createSystemMessage(
+    //           sessionId,
+    //           transferText,
+    //         )
+
+    //         const systemPayload = {
+    //           ...(systemNotice.toObject
+    //             ? systemNotice.toObject()
+    //             : { ...systemNotice }),
+    //           messageText: transferText,
+    //         }
+
+    //         const assignedPopulated = await ChatSession.findById(sessionId)
+    //           .populate('visitorId', VISITOR_POPULATE_FIELDS)
+    //           .lean()
+
+    //         EventService.emitToSession(sessionId, 'new_message', systemPayload)
+    //         EventService.emitToSession(sessionId, 'session_status_changed', {
+    //           sessionId,
+    //           status: 'active',
+    //           session: assignedPopulated,
+    //         })
+
+    //         return messagePayload
+    //       } else {
+    //         // --- FALLBACK: NO OPERATORS AVAILABLE -> ROUTE TO UNASSIGNED QUEUE ---
+    //         session.aiEnabled = true
+    //         session.aiEscalated = true
+    //         session.status = 'queued'
+    //         await session.save()
+
+    //         await QueueService.addToQueue(propertyId, sessionId)
+
+    //         const fallbackReply =
+    //           'I am ready to transfer you, but all of our agents are currently offline. Please hold, and an agent will reply as soon as possible. In the meantime, feel free to keep asking me questions!'
+
+    //         const aiFallbackMsg = await sendMessage(
+    //           sessionId,
+    //           'ai',
+    //           'ai_agent',
+    //           fallbackReply,
+    //           { messageType: 'text' as any, isFromAI: true },
+    //         )
+
+    //         EventService.emitToSession(sessionId, 'new_message', aiFallbackMsg)
+    //         return messagePayload
+    //       }
+    //     }
+
+    //     /* --- SUB-ROUTE B: STANDARD AI PROCESSING (RAG: Knowledge Base + Crawled Data) --- */
+    //     // 1. Fetch history and reverse to chronological order [oldest -> newest]
+    //     const rawHistory = await Message.find({ sessionId })
+    //       .select('+encryptedMessage')
+    //       .sort({ createdAt: -1 })
+    //       .limit(10)
+    //       .lean()
+
+    //     const historyMessages = rawHistory.reverse().map((message: any) => ({
+    //       ...message,
+    //       messageText: message.encryptedMessage
+    //         ? encryptionService.decrypt(message.encryptedMessage)
+    //         : message.messageText || '',
+    //     }))
+
+    //     let aiResponse = {
+    //       reply: 'I am here to help! Could you please clarify your request?',
+    //       confidence: 1,
+    //       shouldEscalate: false,
+    //     }
+
+    //     try {
+    //       // 2. Pass propertyId so AIService can query both crawled pages & Knowledge Base embeddings
+    //       aiResponse = await AIService.generateReply(
+    //         messageText || '[Media Attachment File]',
+    //         historyMessages,
+    //         {
+    //           propertyId, // 🎯 CRITICAL: Context parameter for Crawled & Knowledge Base sources
+    //           sessionId,
+    //         },
+    //       )
+    //     } catch (error) {
+    //       logger.error({ err: error }, 'Error generating AI response')
+    //     }
+
+    //     // 🎯 FORCE ESCALATION GATEWAY: Intercept if explicit transfer command received
+    //     if (isExplicitCommand && initialSessionStatus !== 'waiting') {
+    //       aiResponse = {
+    //         reply:
+    //           'Would you like me to connect you with a live support agent? Please reply with "Yes" to confirm.',
+    //         confidence: 1,
+    //         shouldEscalate: true,
+    //       }
+    //     }
+
+    //     const aiMessage = await sendMessage(
+    //       sessionId,
+    //       'ai',
+    //       'ai_agent',
+    //       aiResponse.reply,
+    //       {
+    //         messageType: 'text' as any,
+    //         isFromAI: true,
+    //       },
+    //     )
+
+    //     EventService.emitToSession(sessionId, 'new_message', aiMessage)
+
+    //     if (aiResponse.shouldEscalate) {
+    //       session.status = 'waiting'
+    //       await session.save()
+    //     } else if (initialSessionStatus === 'waiting') {
+    //       session.status = 'active'
+    //       await session.save()
+    //     }
+
+    //     // Fetch latest session snapshot with populated visitor data
+    //     const freshPopulatedSession = await ChatSession.findById(sessionId)
+    //       .populate('visitorId', VISITOR_POPULATE_FIELDS)
+    //       .lean()
+
+    //     EventService.emitToProperty(propertyId, 'dashboard_message_update', {
+    //       sessionId,
+    //       message: aiMessage,
+    //       session: freshPopulatedSession,
+    //     })
+
+    //     EventService.emitToProperty(propertyId, 'dashboard_refresh_request', {})
+
+    //     return messagePayload
+    //   }
+    // }
+
+
+
     /* ****************************************
      * STEP 4: AI Routing & Triage (WITH CRAWLED & KNOWLEDGEBASE CONTEXT)
      * **************************************** */
