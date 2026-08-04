@@ -262,9 +262,61 @@ export class KnowledgeBaseService {
     const cleanInput = message.toLowerCase().trim()
     const queryEmbedding = await createEmbedding(message)
 
+    // console.log('Test Sandbox Query:', { cleanInput })
+
     let bestMatchText = ''
     let maxScore = 0
 
+    // 1. SEARCH INSIDE FAQS (Question & Answer Pairs)
+    if (kb.faqs && Array.isArray(kb.faqs)) {
+      for (const faq of kb.faqs) {
+        if (!faq.enabled) continue
+
+        let score = 0
+        const lowerQuestion = (faq.question || '').toLowerCase()
+        const lowerAnswer = (faq.answer || '').toLowerCase()
+
+        // Vector Cosine Similarity (If FAQ embedding exists)
+        if (
+          queryEmbedding &&
+          Array.isArray(faq.embedding) &&
+          faq.embedding.length > 0
+        ) {
+          score = cosineSimilarity(queryEmbedding, faq.embedding)
+        }
+
+        // Direct Text/Keyword Matching on Question & Answer
+        if (
+          lowerQuestion.includes(cleanInput) ||
+          cleanInput.includes(lowerQuestion)
+        ) {
+          score = Math.max(score, 0.85) // Strong boost for Question match
+        } else if (lowerAnswer.includes(cleanInput)) {
+          score = Math.max(score, 0.65) // Moderate boost for Answer match
+        }
+
+        // Keyword word-by-word matching
+        const inputWords = cleanInput.split(/\s+/).filter((w) => w.length > 2)
+        if (inputWords.length > 0) {
+          const matchedCount = inputWords.filter(
+            (w) => lowerQuestion.includes(w) || lowerAnswer.includes(w),
+          ).length
+          const wordMatchRatio = matchedCount / inputWords.length
+          if (wordMatchRatio >= 0.5) {
+            score = Math.max(score, 0.5 + wordMatchRatio * 0.35)
+          }
+        }
+
+        score = Math.min(score, 1)
+
+        if (score > maxScore) {
+          maxScore = score
+          bestMatchText = faq.answer
+        }
+      }
+    }
+
+    // 2. SEARCH INSIDE CRAWLED SOURCES (Web Scraped Chunks)
     if (kb.crawledSources && Array.isArray(kb.crawledSources)) {
       for (const source of kb.crawledSources) {
         if (source.status !== 'scraped' || !source.chunks) continue
@@ -273,11 +325,14 @@ export class KnowledgeBaseService {
           let score = 0
           const lowerChunkText = chunk.text.toLowerCase()
 
-          if (Array.isArray(chunk.embedding) && chunk.embedding.length > 0) {
+          if (
+            queryEmbedding &&
+            Array.isArray(chunk.embedding) &&
+            chunk.embedding.length > 0
+          ) {
             score = cosineSimilarity(queryEmbedding, chunk.embedding)
           }
 
-          // Exact matching rules alignment for Sandbox Sync
           if (lowerChunkText.includes(cleanInput)) {
             const exactWordRegex = new RegExp(`\\b${cleanInput}\\b`, 'i')
             if (exactWordRegex.test(lowerChunkText)) {
@@ -297,10 +352,10 @@ export class KnowledgeBaseService {
       }
     }
 
-    // Give crawled text chunks a lower, more realistic boundary ceiling than strict FAQ configurations
+    // Dynamic threshold determination
     const minimumSandboxThreshold = Math.max(
-      (kb.confidenceThreshold ?? 0.8) - 0.25,
-      0.45,
+      (kb.confidenceThreshold ?? 0.8) - 0.35, // Relax threshold slightly for sandbox testing
+      0.4,
     )
 
     if (maxScore >= minimumSandboxThreshold && bestMatchText) {
