@@ -708,61 +708,64 @@ export class AIService {
       /* ========================================================================== */
       /* 🎯 HYBRID KNOWLEDGE RETRIEVAL (FAQ KB + CRAWLED PAGES)                    */
       /* ========================================================================== */
-      const settings = await KnowledgeBaseService.getKnowledgeBase(
-        '',
-        propertyId,
-      )
-      const threshold = settings?.confidenceThreshold ?? 0.35
-
       const queryEmbedding: number[] = await createEmbedding(cleanInput)
 
-      // 1️⃣ LOAD ALL ENABLED FAQS FIRST
-      const fullKb = await KnowledgeBaseService.getKnowledgeBase('', propertyId)
+      // 1️⃣ DIRECT MONGODB LOOKUP FOR ALL PROPERTY FAQS
+      const kbDocument = await KnowledgeBase.findOne({ propertyId }).lean()
 
-      const knowledge =
-        fullKb?.faqs?.filter((faq: any) => faq.enabled !== false) || []
+      const faqsList = kbDocument?.faqs || []
+
+      // Filter for enabled FAQs (or FAQs without an explicit 'enabled: false' flag)
+      const activeFaqs = faqsList.filter((f: any) => f.enabled !== false)
 
       let bestFaqMatch: any = null
 
-      if (knowledge.length > 0) {
-        const ranked = await Promise.all(
-          knowledge.map(async (item: any) => {
-            const hasEmbedding =
-              Array.isArray(item.embedding) && item.embedding.length > 0
+      if (activeFaqs.length > 0) {
+        const ranked = activeFaqs.map((item: any) => {
+          const hasEmbedding =
+            Array.isArray(item.embedding) && item.embedding.length > 0
 
-            let semanticScore = 0
-            if (hasEmbedding && queryEmbedding.length > 0) {
-              semanticScore = cosineSimilarity(
-                queryEmbedding,
-                item.embedding as number[],
-              )
-            }
+          let semanticScore = 0
+          if (hasEmbedding && queryEmbedding.length > 0) {
+            semanticScore = cosineSimilarity(
+              queryEmbedding,
+              item.embedding as number[],
+            )
+          }
 
-            // Keyword & Text String Comparison
-            const keywordScore = scoreQuestion(cleanInput, item.keywords ?? [])
-            const normalizedKeyword = Math.min(keywordScore / 50, 1)
+          // Keyword & String Matching
+          const keywordScore = scoreQuestion(cleanInput, item.keywords ?? [])
+          const normalizedKeyword = Math.min(keywordScore / 50, 1)
 
-            // Direct String Matching on Question & Answer Text
-            const cleanQuestion = item.question
-              ? normalizeInput(item.question)
-              : ''
-            const isExactOrPartialMatch =
-              cleanQuestion.includes(cleanInput) ||
-              cleanInput.includes(cleanQuestion)
-            const textMatchBonus = isExactOrPartialMatch ? 0.8 : 0
+          // Direct Substring Check on Question and Answer
+          const cleanQuestion = item.question
+            ? normalizeInput(item.question)
+            : ''
+          const cleanAnswer = item.answer ? normalizeInput(item.answer) : ''
 
-            // Combine scores with high weight on direct text & semantic match
-            const confidence = hasEmbedding
-              ? semanticScore * 0.5 +
-                normalizedKeyword * 0.2 +
-                textMatchBonus * 0.3
-              : textMatchBonus * 0.7 + normalizedKeyword * 0.3
+          const isQuestionMatch =
+            cleanQuestion.includes(cleanInput) ||
+            cleanInput.includes(cleanQuestion)
+          const isAnswerMatch = cleanAnswer.includes(cleanInput)
 
-            return { ...item, semanticScore, confidence }
-          }),
-        )
+          const directTextBonus = isQuestionMatch
+            ? 0.9
+            : isAnswerMatch
+              ? 0.5
+              : 0
 
-        ranked.sort((a, b) => b.confidence - a.confidence)
+          // Calculate final confidence
+          const confidence = Math.max(
+            semanticScore * 0.6 +
+              normalizedKeyword * 0.2 +
+              directTextBonus * 0.2,
+            directTextBonus,
+          )
+
+          return { ...item, semanticScore, confidence }
+        })
+
+        ranked.sort((a: any, b: any) => b.confidence - a.confidence)
 
         if (ranked[0] && ranked[0].confidence > 0) {
           bestFaqMatch = ranked[0]
@@ -771,10 +774,8 @@ export class AIService {
 
       const faqConfidence = bestFaqMatch?.confidence ?? 0
 
-      // 🎯 RULE 1: PRIORITY TO MANUAL FAQS
-      // If a manual FAQ meets the minimum confidence threshold, return it IMMEDIATELY
-      // without letting crawled website chunks override it.
-      if (bestFaqMatch && faqConfidence >= threshold) {
+      // 🚨 FAQ FORCE PRIORITY: If FAQ match score is >= 0.25 (or direct text matches), RETURN IT IMMEDIATELY
+      if (bestFaqMatch && faqConfidence >= 0.25) {
         setMemory(sessionId, {
           lastQuestion: message,
           lastAnswer: bestFaqMatch.answer,
@@ -796,10 +797,11 @@ export class AIService {
           }
         }
 
+        // Return direct FAQ answer
         return createResponse(bestFaqMatch.answer, faqConfidence, false)
       }
 
-      // 2️⃣ CRAWLED WEB CONTENT FALLBACK (Only called if no FAQ matched)
+      // 2️⃣ CRAWLED WEB CONTENT FALLBACK (Only called if NO FAQ matched above 0.25)
       const webFallback = await KnowledgeBaseService.searchWebContextFallback(
         propertyId,
         cleanInput,
