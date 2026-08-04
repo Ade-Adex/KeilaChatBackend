@@ -705,62 +705,71 @@ export class AIService {
         )
       }
 
+
       /* ========================================================================== */
-      /* 🎯 HYBRID KNOWLEDGE RETRIEVAL (FAQ KB + CRAWLED PAGES)                     */
+      /* 🎯 HYBRID KNOWLEDGE RETRIEVAL (FAQ KB + CRAWLED PAGES)                    */
       /* ========================================================================== */
       const settings = await KnowledgeBaseService.getKnowledgeBase(
         '',
         propertyId,
       )
-      const threshold = settings?.confidenceThreshold ?? 0.60
+
+      // Adjusted default threshold: Cosine similarity for short text typically scores between 0.35 - 0.55
+      const threshold = settings?.confidenceThreshold ?? 0.38
 
       const queryEmbedding: number[] = await createEmbedding(cleanInput)
 
-      // 1️⃣ SEARCH FAQ KNOWLEDGE BASE BY INTENT FIRST
-      let knowledge = await KnowledgeBaseService.searchByIntent(
-        propertyId,
-        intent,
-      )
+      // 1️⃣ LOAD ALL ENABLED FAQS DIRECTLY TO BYPASS INTENT FILTERS
+      const fullKb = await KnowledgeBaseService.getKnowledgeBase('', propertyId)
 
-      // 🔄 FIX: If no intent-specific FAQs matched, load ALL enabled FAQs for vector comparison
-      if (!knowledge || knowledge.length === 0) {
-        const fullKb = await KnowledgeBaseService.getKnowledgeBase(
-          '',
-          propertyId,
-        )
-        if (fullKb && fullKb.faqs) {
-          knowledge = fullKb.faqs.filter((faq: any) => faq.enabled !== false)
-        }
-      }
+      let knowledge =
+        fullKb?.faqs?.filter((faq: any) => faq.enabled !== false) || []
 
-      // Score and rank matched FAQs
       let bestFaqMatch: any = null
-      if (knowledge && knowledge.length > 0) {
+
+      if (knowledge.length > 0) {
         const ranked = await Promise.all(
           knowledge.map(async (item: any) => {
-            if (!Array.isArray(item.embedding) || !item.embedding.length) {
-              return { ...item, semanticScore: 0, confidence: 0 }
+            // Clean and validate embedding array
+            const hasEmbedding =
+              Array.isArray(item.embedding) && item.embedding.length > 0
+
+            let semanticScore = 0
+            if (hasEmbedding && queryEmbedding.length > 0) {
+              semanticScore = cosineSimilarity(
+                queryEmbedding,
+                item.embedding as number[],
+              )
             }
 
-            const embedding = item.embedding as number[]
-            const semanticScore = cosineSimilarity(queryEmbedding, embedding)
+            // Keyword & Direct Text Matching
             const keywordScore = scoreQuestion(cleanInput, item.keywords ?? [])
-            const intentScore = item.intent === intent ? 1 : 0
-            const contextScore = memory?.lastIntent === item.intent ? 0.5 : 0
             const normalizedKeyword = Math.min(keywordScore / 50, 1)
 
-            const confidence =
-              semanticScore * 0.7 +
-              normalizedKeyword * 0.15 +
-              intentScore * 0.1 +
-              contextScore * 0.05
+            // Direct Question Text Match (Fallback if embeddings are missing/low)
+            const directQuestionMatch =
+              item.question &&
+              normalizeInput(item.question).includes(cleanInput)
+                ? 0.8
+                : 0
+
+            // Calculate confidence (Uses direct match if embedding is missing)
+            const confidence = hasEmbedding
+              ? semanticScore * 0.7 +
+                normalizedKeyword * 0.2 +
+                directQuestionMatch * 0.1
+              : directQuestionMatch * 0.7 + normalizedKeyword * 0.3
 
             return { ...item, semanticScore, confidence }
           }),
         )
 
+        // Sort by confidence high-to-low
         ranked.sort((a, b) => b.confidence - a.confidence)
-        bestFaqMatch = ranked[0]
+
+        if (ranked[0] && ranked[0].confidence > 0) {
+          bestFaqMatch = ranked[0]
+        }
       }
 
       // 2️⃣ SEARCH CRAWLED WEB CONTENT
@@ -774,7 +783,7 @@ export class AIService {
       const faqConfidence = bestFaqMatch?.confidence ?? 0
       const webConfidence = webFallback?.confidenceScore ?? 0
 
-      // Case A: FAQ score passes threshold and beats web content score
+      // Case A: FAQ Match passes threshold
       if (
         bestFaqMatch &&
         faqConfidence >= threshold &&
@@ -783,27 +792,29 @@ export class AIService {
         setMemory(sessionId, {
           lastQuestion: message,
           lastAnswer: bestFaqMatch.answer,
-          lastTopic: bestFaqMatch.intent,
+          lastTopic: bestFaqMatch.intent || 'faq_match',
         })
 
         const faqId = bestFaqMatch._id
-        try {
-          await KnowledgeBase.updateOne(
-            { propertyId, 'faqs._id': faqId },
-            {
-              $inc: { 'faqs.$.usageCount': 1 },
-              $set: { 'faqs.$.lastMatchedAt': new Date() },
-            },
-          )
-        } catch (err) {
-          logger.warn({ err, faqId }, 'Failed to update FAQ usage metrics')
+        if (faqId) {
+          try {
+            await KnowledgeBase.updateOne(
+              { propertyId, 'faqs._id': faqId },
+              {
+                $inc: { 'faqs.$.usageCount': 1 },
+                $set: { 'faqs.$.lastMatchedAt': new Date() },
+              },
+            )
+          } catch (err) {
+            logger.warn({ err, faqId }, 'Failed to update FAQ usage metrics')
+          }
         }
 
         return createResponse(bestFaqMatch.answer, faqConfidence, false)
       }
 
-      // Case B: Web content matches with sufficient confidence
-      if (webFallback.matched && webConfidence >= 0.45) {
+      // Case B: Web Content Match passes lower threshold
+      if (webFallback?.matched && webConfidence >= 0.35) {
         setMemory(sessionId, {
           lastQuestion: message,
           lastAnswer: webFallback.answer,
